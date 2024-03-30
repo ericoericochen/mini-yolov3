@@ -2,11 +2,17 @@ from torch.utils.data import Dataset
 from datasets import load_dataset
 import torch
 import torchvision
+import utils
 
 
 class SVNHDataset(Dataset):
     def __init__(
-        self, split="train", image_size: int = 64, type="pil", normalize: bool = False
+        self,
+        split="train",
+        image_size: int = 64,
+        type="pil",
+        normalize: bool = False,
+        bbox_format="coco",
     ):
         assert split in ["train", "test", "extra"]
         assert type in ["pil", "tensor"]
@@ -15,6 +21,7 @@ class SVNHDataset(Dataset):
         self.image_size = image_size
         self.type = type
         self.normalize = normalize
+        self.bbox_format = bbox_format
         self.dataset = load_dataset("svhn", "full_numbers", split=split)
 
     def __len__(self):
@@ -46,6 +53,9 @@ class SVNHDataset(Dataset):
             bbox, dtype=torch.float32
         )  # (x_center, y_center, width, height)
 
+        if self.bbox_format == "xyxy":
+            bbox = utils.coco_to_xyxy_format(bbox)
+
         # scale bbox with w_factor and f_factor
         bbox[:, [0, 2]] *= w_factor
         bbox[:, [1, 3]] *= h_factor
@@ -56,3 +66,15 @@ class SVNHDataset(Dataset):
         labels = torch.tensor(labels, dtype=torch.int8)
 
         return {"image": image, "bbox": bbox, "labels": labels}
+
+
+def collate_fn(batch):
+    images = torch.stack([item["image"] for item in batch], dim=0)
+    bbox = [item["bbox"] for item in batch]
+    labels = [item["labels"] for item in batch]
+
+    return {
+        "images": images,
+        "bbox": bbox,
+        "labels": labels,
+    }
