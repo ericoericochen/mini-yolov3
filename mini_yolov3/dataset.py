@@ -1,16 +1,20 @@
 from torch.utils.data import Dataset
 from datasets import load_dataset
 import torch
+import torchvision
 
 
 class SVNHDataset(Dataset):
-    def __init__(self, split="train", image_size: int = 64, type="pil"):
+    def __init__(
+        self, split="train", image_size: int = 64, type="pil", normalize: bool = False
+    ):
         assert split in ["train", "test", "extra"]
         assert type in ["pil", "tensor"]
 
         self.split = split
         self.image_size = image_size
         self.type = type
+        self.normalize = normalize
         self.dataset = load_dataset("svhn", "full_numbers", split=split)
 
     def __len__(self):
@@ -35,6 +39,9 @@ class SVNHDataset(Dataset):
 
         image = image.resize((self.image_size, self.image_size))
 
+        if self.type == "tensor":
+            image = torchvision.transforms.ToTensor()(image)
+
         bbox = torch.tensor(
             bbox, dtype=torch.float32
         )  # (x_center, y_center, width, height)
@@ -43,6 +50,9 @@ class SVNHDataset(Dataset):
         bbox[:, [0, 2]] *= w_factor
         bbox[:, [1, 3]] *= h_factor
 
-        labels = torch.tensor(labels, dtype=torch.long)
+        if self.normalize:
+            bbox = bbox / self.image_size
+
+        labels = torch.tensor(labels, dtype=torch.int8)
 
         return {"image": image, "bbox": bbox, "labels": labels}
