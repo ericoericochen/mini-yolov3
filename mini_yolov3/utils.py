@@ -106,3 +106,26 @@ def draw_grid(image, grid_size):
         draw.line([(x, 0), (x, height)], fill=grid_color, width=thickness)
 
     return image
+
+
+def box_iou(bbox1: torch.Tensor, bbox2: torch.Tensor) -> torch.Tensor:
+    x1_min, y1_min, x1_max, y1_max = bbox1[:, 0], bbox1[:, 1], bbox1[:, 2], bbox1[:, 3]
+    x2_min, y2_min, x2_max, y2_max = bbox2[:, 0], bbox2[:, 1], bbox2[:, 2], bbox2[:, 3]
+
+    a = torch.max(x1_min, x2_min)
+    b = torch.max(y1_min, y2_min)
+    c = torch.min(x1_max, x2_max)
+    d = torch.min(y1_max, y2_max)
+
+    print(a, b, c, d)
+
+    intersection = torch.relu(c - a) * torch.relu(d - b)
+    union = (
+        (x1_max - x1_min) * (y1_max - y1_min)
+        + (x2_max - x2_min) * (y2_max - y2_min)
+        - intersection
+    )
+
+    iou = intersection / union
+
+    return iou
