@@ -2,7 +2,6 @@ import torch
 from PIL import Image, ImageDraw
 import torchvision
 from typing import Union
-import matplotlib.pyplot as plt
 from typing import Literal
 
 
@@ -85,7 +84,7 @@ def draw_bounding_boxes(
     image: Image.Image,
     bbox: torch.Tensor,
     labels: Union[torch.Tensor, list[str]],
-    format: Literal["coco", "xyxy", "xywh"] = "coco",
+    bbox_format: Literal["coco", "xyxy", "xywh"] = "coco",
 ):
     """
     Draw bounding boxes on an image with labels
@@ -105,9 +104,9 @@ def draw_bounding_boxes(
 
     # convert bbox to xyxy
     bbox = bbox.clone()
-    if format == "coco":
+    if bbox_format == "coco":
         bbox = coco_to_xyxy(bbox)
-    elif format == "xywh":
+    elif bbox_format == "xywh":
         bbox = xywh_to_xyxy(bbox)
 
     # rescale bbox to image size
@@ -115,6 +114,8 @@ def draw_bounding_boxes(
 
     bbox[:, [0, 2]] *= w  # scale x coords
     bbox[:, [1, 3]] *= h  # scale y coords
+
+    print(bbox.shape)
 
     bounding_box_image = torchvision.utils.draw_bounding_boxes(
         image, boxes=bbox, labels=labels
@@ -138,10 +139,12 @@ def to_pil_image(image: torch.Tensor):
     return torchvision.transforms.ToPILImage()(image)
 
 
-def draw_grid(image: Image.Image, grid_size: int):
+def draw_grid(image: Union[Image.Image, torch.Tensor], grid_size: int):
     """
     Draw a grid on an image. The total number of cells is `grid_size x grid_size`.
     """
+    if isinstance(image, torch.Tensor):
+        image = to_pil_image(image)
 
     image = image.copy()
 

@@ -4,7 +4,7 @@ import torch.nn as nn
 from typing import Literal
 
 
-class YOLOLoss(nn.Module):
+class YOLOLoss_(nn.Module):
     def __init__(
         self, num_anchors: int = 2, lambda_coord: float = 1.0, lambda_noobj: float = 1.0
     ):
@@ -154,6 +154,102 @@ class YOLOLoss(nn.Module):
         return loss
 
 
+class YOLOLoss(nn.Module):
+    def __init__(
+        self,
+        num_classes: int,
+        anchors: torch.Tensor,
+        lambda_coord: float = 1.0,
+        lambda_noobj: float = 1.0,
+    ):
+        super().__init__()
+        self.num_classes = num_classes
+        self.anchors = anchors
+        self.lambda_coord = lambda_coord
+        self.lambda_noobj = lambda_noobj
+
+    def forward(
+        self,
+        pred: torch.Tensor,
+        bboxes: list[torch.Tensor],
+        labels: list[torch.Tensor],
+        bbox_format: Literal["coco", "xywh", "xyxy"] = "coco",
+    ):
+        A = self.anchors.shape[0]
+        G = pred.shape[2]
+
+        assert pred.shape[3] == pred.shape[2] == G
+
+        # make target tensor
+        target = build_targets(
+            bboxes=bboxes,
+            labels=labels,
+            grid_size=G,
+            anchors=self.anchors,
+            bbox_format=bbox_format,
+        )  # (B, 4 + 2A, G, G)
+
+        target = target.permute(0, 2, 3, 1)  # (B, G, G, 6)
+
+        print("target.shape:", target.shape)
+        print("pred.shape", pred.shape)
+
+        # == coord loss ==
+
+        # get mask for cells that contain an object
+        # obj_mask = target[:, -2, :, :] == 1  # (B, G, G)
+        obj_mask = target[:, :, :, -2] == 1  # (B, G, G)
+
+        # convert tx, ty, tw, th to xywh
+        pred = pred.permute(0, 2, 3, 1).view(
+            -1, G, G, A, self.num_classes + 5
+        )  # (B, G, G, A * (5 + C)) -> (B, G, G, A, 5 + C)
+
+        pred_txy = pred[:, :, :, :, :2]  # (B, G, G, A, 2)
+        pred_twh = pred[:, :, :, :, 2:4]  # (B, G, G, A, 2)
+        pred_class_pred = pred[:, :, :, :, 5:]  # (B, G, G, A, C)
+
+        # relative xy to cell
+        pred_xy = pred_txy.sigmoid()
+
+        # convert tw, th to wh
+        pred_wh = pred_twh.exp() * self.anchors.unsqueeze(0).unsqueeze(0).unsqueeze(
+            0
+        )  # (B, G, G, A, 2)
+
+        # let O = # of cells that contain an object
+        obj_pred_xy = pred_xy[obj_mask]  # (O, A, 2)
+        obj_pred_wh = pred_wh[obj_mask]  # (O, A, 2)
+
+        print(
+            "obj_pred_xy.shape",
+            obj_pred_xy.shape,
+            "obj_pred_wh.shape",
+            obj_pred_wh.shape,
+        )
+        print(obj_pred_xy, obj_pred_wh)
+
+        # get target bounding boxes
+        obj_target = target[obj_mask]  # (O, 6)
+        obj_txy = obj_target[:, :2]  # (O, 2)
+        obj_twh = obj_target[:, 2:-2].view(-1, A, 2)  # (O, A, 2)
+
+        print("obj_target.shape", obj_target.shape, "obj_twh.shape", obj_twh.shape)
+
+        # calculate box ious
+        obj_pred_xywh = torch.cat((obj_pred_xy, obj_pred_wh), dim=-1)  # (O, A, 4)
+        obj_pred_xywh = obj_pred_xywh.view(-1, 4)  # (O * A, 4)
+
+        print("obj_pred_xywh.shape", obj_pred_xywh.shape)
+
+        # == coord loss ==
+
+        # noobj mask
+        noobj_mask = ~obj_mask
+
+        # class prediction loss
+
+
 def build_targets(
     bboxes: list[torch.Tensor],
     labels: list[torch.Tensor],
@@ -218,42 +314,5 @@ def build_targets(
         assert target_value.shape == torch.Size([2, 2 + A * 2 + 2])
 
         target[i, :, cell_ij[:, 1], cell_ij[:, 0]] = target_value.T  # (A*2+4, N)
-
-    return target
-
-
-def build_target(  # ()
-    bboxes: list[torch.Tensor],
-    labels: list[torch.Tensor],
-    grid_size: int,
-):
-    """
-    Assume COCO for now
-
-    bbox should be normalized [0, 1]
-    """
-    assert len(bboxes) == len(labels), "Mismatch b/w images in `bbox` and `labels`"
-
-    B = len(bboxes)
-
-    # create target)
-    target = torch.zeros((B, 6, grid_size, grid_size))
-    cell_size = 1 / grid_size
-
-    for i, (bbox, label) in enumerate(zip(bboxes, labels)):
-        L = label.shape[0]
-
-        xywh = coco_to_xywh(bbox)
-        xy = xywh[:, [0, 1]]
-        cell_ij = (xy // cell_size).to(torch.int)
-
-        print(cell_ij)
-
-        # value at a cell (b_x, b_y, b_w, h_h, 1, label)
-        value = torch.cat(
-            [xywh, torch.ones(L, 1), label.unsqueeze(1)], dim=1
-        ).T  # (6, L)
-
-        target[i, :, cell_ij[:, 1], cell_ij[:, 0]] = value
 
     return target
