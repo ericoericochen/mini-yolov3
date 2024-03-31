@@ -188,19 +188,3 @@ def build_target(  #
         target[i, :, cell_ij[:, 1], cell_ij[:, 0]] = value
 
     return target
-
-
-"""
-# scale relative x, y to global x, y
-        cell_size = 1 / grid_size
-        x_indices = list(range(0, dim, num_classes + 5))
-        x_offsets = (
-            torch.arange(0, grid_size).repeat(grid_size, 1) * cell_size
-        )  # (H, W)
-
-        y_indices = list(range(1, dim, num_classes + 5))
-        y_offsets = x_offsets.T
-
-        pred[:, x_indices, :, :] += x_offsets
-        pred[:, y_indices, :, :] += y_offsets
-"""
