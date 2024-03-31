@@ -2,7 +2,7 @@ from torch.utils.data import Dataset
 from datasets import load_dataset
 import torch
 import torchvision
-import utils
+from .utils import coco_to_xyxy_format
 
 
 class SVNHDataset(Dataset):
@@ -54,7 +54,7 @@ class SVNHDataset(Dataset):
         )  # (x_center, y_center, width, height)
 
         if self.bbox_format == "xyxy":
-            bbox = utils.coco_to_xyxy_format(bbox)
+            bbox = coco_to_xyxy_format(bbox)
 
         # scale bbox with w_factor and f_factor
         bbox[:, [0, 2]] *= w_factor

@@ -42,6 +42,23 @@ def coco_to_xywh(bbox: torch.Tensor):
     return bbox
 
 
+def xywh_to_xyxy(bbox: torch.Tensor):
+    """
+    Converts (x, y, w, h) format to (x_min, y_min, x_max, y_max) format
+
+    Params:
+        - bbox: (B, 4) in (x, y, w, h) format
+    """
+
+    x = bbox[:, 0] - bbox[:, 2] / 2
+    y = bbox[:, 1] - bbox[:, 3] / 2
+    x2 = bbox[:, 0] + bbox[:, 2] / 2
+    y2 = bbox[:, 1] + bbox[:, 3] / 2
+
+    bbox = torch.stack([x, y, x2, y2], dim=1)
+    return bbox
+
+
 def draw_bounding_boxes(
     image: Image.Image,
     bbox: torch.Tensor,
@@ -116,8 +133,6 @@ def box_iou(bbox1: torch.Tensor, bbox2: torch.Tensor) -> torch.Tensor:
     b = torch.max(y1_min, y2_min)
     c = torch.min(x1_max, x2_max)
     d = torch.min(y1_max, y2_max)
-
-    print(a, b, c, d)
 
     intersection = torch.relu(c - a) * torch.relu(d - b)
     union = (
