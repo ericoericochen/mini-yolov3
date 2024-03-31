@@ -197,7 +197,6 @@ class YOLOLoss(nn.Module):
         # == coord loss ==
 
         # get mask for cells that contain an object
-        # obj_mask = target[:, -2, :, :] == 1  # (B, G, G)
         obj_mask = target[:, :, :, -2] == 1  # (B, G, G)
 
         # convert tx, ty, tw, th to xywh
