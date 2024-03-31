@@ -2,7 +2,8 @@ from torch.utils.data import Dataset
 from datasets import load_dataset
 import torch
 import torchvision
-from .utils import coco_to_xyxy_format
+from .utils import coco_to_xyxy, coco_to_xywh
+from typing import Literal
 
 
 class SVNHDataset(Dataset):
@@ -12,7 +13,7 @@ class SVNHDataset(Dataset):
         image_size: int = 64,
         type="pil",
         normalize: bool = False,
-        bbox_format="coco",
+        bbox_format: Literal["coco", "xyxy", "xywh"] = "coco",
     ):
         assert split in ["train", "test", "extra"]
         assert type in ["pil", "tensor"]
@@ -31,7 +32,7 @@ class SVNHDataset(Dataset):
         """
         Returns: {"image": PIL.Image.Image | torch.Tensor, "bbox": torch.Tensor, "labels": torch.Tensor}
 
-        bbox is in COCO format (x_center, y_center, width, height)
+        Default bbox is in COCO format (x_min, y_min, width, height)
         """
         item = self.dataset[idx]
 
@@ -41,6 +42,7 @@ class SVNHDataset(Dataset):
             item["digits"]["label"],
         )
 
+        # scale bbox with w_factor and f_factor
         w_factor = self.image_size / image.width
         h_factor = self.image_size / image.height
 
@@ -54,12 +56,14 @@ class SVNHDataset(Dataset):
         )  # (x_center, y_center, width, height)
 
         if self.bbox_format == "xyxy":
-            bbox = coco_to_xyxy_format(bbox)
+            bbox = coco_to_xyxy(bbox)
+        elif self.bbox_format == "xywh":
+            bbox = coco_to_xywh(bbox)
 
-        # scale bbox with w_factor and f_factor
         bbox[:, [0, 2]] *= w_factor
         bbox[:, [1, 3]] *= h_factor
 
+        # normalize bbox coordinates
         if self.normalize:
             bbox = bbox / self.image_size
 

@@ -61,6 +61,26 @@ def xywh_to_xyxy(bbox: torch.Tensor):
     return bbox
 
 
+def xyxy_to_xywh(bbox: torch.Tensor):
+    """
+    Converts (x_min, y_min, x_max, y_max) format to (x_c, y_c, w, h) format
+
+    Params:
+        - bbox: (B, 4) in (x_min, y_min, x_max, y_max) format
+    """
+
+    # get center of bounding box
+    x = (bbox[:, 0] + bbox[:, 2]) / 2
+    y = (bbox[:, 1] + bbox[:, 3]) / 2
+
+    # get width and height
+    w = bbox[:, 2] - bbox[:, 0]
+    h = bbox[:, 3] - bbox[:, 1]
+
+    bbox = torch.stack([x, y, w, h], dim=1)
+    return bbox
+
+
 def draw_bounding_boxes(
     image: Image.Image,
     bbox: torch.Tensor,

@@ -1,6 +1,7 @@
 import torch
-from .utils import coco_to_xywh, box_iou, xywh_to_xyxy
+from .utils import coco_to_xywh, box_iou, xywh_to_xyxy, xyxy_to_xywh
 import torch.nn as nn
+from typing import Literal
 
 
 class YOLOLoss(nn.Module):
@@ -153,7 +154,75 @@ class YOLOLoss(nn.Module):
         return loss
 
 
-def build_target(  #
+def build_targets(
+    bboxes: list[torch.Tensor],
+    labels: list[torch.Tensor],
+    grid_size: int,
+    anchors: torch.Tensor,
+    bbox_format: Literal["coco", "xyxy", "xywh"] = "coco",
+):
+    """
+    Construct Target for Loss Calculation
+
+    Returns: (B, A * 6, G, G)
+    """
+    A = anchors.shape[0]
+    B = len(bboxes)
+
+    # print("building targets")
+    # print("A", A)
+
+    target = torch.zeros(B, A * 2 + 4, grid_size, grid_size)
+    cell_size = 1 / grid_size
+
+    # print("cell size:", cell_size)
+
+    for i, (bbox, label) in enumerate(zip(bboxes, labels)):
+        N = bbox.shape[0]  # number of bounding boxes
+
+        # convert bbox to xywh
+        if bbox_format == "coco":
+            bbox = coco_to_xywh(bbox)
+        elif bbox_format == "xyxy":
+            bbox = xyxy_to_xywh(bbox)
+
+        # get the cell each bbox belongs to
+        xy = bbox[:, :2]  # (N, 2)
+        wh = bbox[:, 2:]  # (N, 2)
+        cell_ij = (xy // cell_size).int()
+
+        # print("xy", xy)
+
+        # c_x, c_y from the paper
+        offsets = cell_ij * cell_size
+
+        # print("cell and offsets")
+        # print(cell_ij, offsets)
+
+        eps = 1e-8
+        txy = -torch.log(1 / (xy - offsets + eps) - 1)  # t_x, t_y (N, 2)
+
+        # calculate t_w, t_h
+        twh = torch.log(
+            wh.unsqueeze(1) / anchors.unsqueeze(0)
+        )  # (N, 2), (A, 2) -> (N, A, 2)
+
+        twh = twh.view(-1, A * 2)  # (Z, A * 2)
+
+        # construct target value (t_x, t_y, (t_w, t_h) * A, 1, label)
+        confidence = torch.ones(N, 1)
+        label = label.unsqueeze(1)
+
+        target_value = torch.cat((txy, twh, confidence, label), dim=1)
+
+        assert target_value.shape == torch.Size([2, 2 + A * 2 + 2])
+
+        target[i, :, cell_ij[:, 1], cell_ij[:, 0]] = target_value.T  # (A*2+4, N)
+
+    return target
+
+
+def build_target(  # ()
     bboxes: list[torch.Tensor],
     labels: list[torch.Tensor],
     grid_size: int,
