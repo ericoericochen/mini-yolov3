@@ -73,9 +73,9 @@ class YOLOLoss(nn.Module):
         ious = box_iou(bboxes_xyxy, target_bboxes_xyxy)  # (ZA, 4)
         ious = ious.view(-1, self.num_anchors)  # (Z, A)
 
-        print("ious")
-        print(ious.shape)
-        print(ious)
+        # print("ious")
+        # print(ious.shape)
+        # print(ious)
 
         # select prediction with highest iou
         best_iou, best_iou_idx = ious.max(dim=1, keepdim=True)  # (Z, )
@@ -83,20 +83,20 @@ class YOLOLoss(nn.Module):
             torch.arange(0, self.num_anchors).repeat(ious.shape[0], 1) == best_iou_idx
         )  # (Z, A)
 
-        print("max mask")
-        print(max_mask)
+        # print("max mask")
+        # print(max_mask)
 
-        print("best iou")
-        print(best_iou.shape)
+        # print("best iou")
+        # print(best_iou.shape)
 
-        print("obj pred")
-        print(obj_pred.shape)
+        # print("obj pred")
+        # print(obj_pred.shape)
 
         obj_pred = obj_pred[max_mask]  # (Z, C + 5)
 
-        print("time to calculate loss")
-        print(obj_pred)
-        print(obj_target)
+        # print("time to calculate loss")
+        # print(obj_pred)
+        # print(obj_target)
 
         # coord loss
         obj_pred_xy = obj_pred[:, :2]  # (Z, 4)
@@ -116,7 +116,41 @@ class YOLOLoss(nn.Module):
             -obj_pred_conf.log().mean()
         )  # negative log likelihood (logistic loss)
 
-        print(obj_conf_loss)
+        # print(obj_conf_loss)
+
+        # loss for class prediction
+        # print("[class loss]")
+
+        class_scores = obj_pred[:, 5:]
+        target_class = obj_target[:, 5].to(torch.long)
+
+        class_loss = self.cross_entropy_loss(class_scores, target_class)
+
+        # print(class_scores.shape, target_class.shape)
+        # print(class_loss)
+
+        # print("[class loss]")
+
+        # loss for no object
+        noobj_mask = ~obj_mask
+        # print(noobj_mask.shape)
+        noobj_pred = pred[noobj_mask].view(
+            -1, self.num_anchors, num_classes + 5
+        )  # (K, A, C + 5)
+        noobj_pred_conf = noobj_pred[:, :, 4]  # (K, A)
+
+        # print(noobj_pred_conf.shape)
+        # print(noobj_pred_conf)
+
+        noobj_loss = (
+            self.lambda_noobj * -(1 - noobj_pred_conf).log().mean()
+        )  # negative log likelihood
+
+        # print(noobj_loss)
+
+        loss = coord_loss + obj_conf_loss + class_loss + noobj_loss
+
+        return loss
 
 
 def build_target(  #
