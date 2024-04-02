@@ -2,6 +2,7 @@ import torch
 from .utils import coco_to_xywh, box_iou, xywh_to_xyxy, xyxy_to_xywh
 import torch.nn as nn
 from typing import Literal
+import torch.nn.functional as F
 
 
 class YOLOLoss_(nn.Module):
@@ -186,65 +187,66 @@ class YOLOLoss(nn.Module):
             labels=labels,
             grid_size=G,
             anchors=self.anchors,
+            num_classes=self.num_classes,
             bbox_format=bbox_format,
-        )  # (B, 4 + 2A, G, G)
+        )  # (B, A(5 + C), G, G)
 
-        target = target.permute(0, 2, 3, 1)  # (B, G, G, 6)
+        # target = target.permute(0, 2, 3, 1)  # (B, G, G, 6)
 
-        print("target.shape:", target.shape)
-        print("pred.shape", pred.shape)
+        # print("target.shape:", target.shape)
+        # print("pred.shape", pred.shape)
 
         # == coord loss ==
 
         # get mask for cells that contain an object
-        obj_mask = target[:, :, :, -2] == 1  # (B, G, G)
+        # obj_mask = target[:, :, :, -2] == 1  # (B, G, G)
 
-        # convert tx, ty, tw, th to xywh
-        pred = pred.permute(0, 2, 3, 1).view(
-            -1, G, G, A, self.num_classes + 5
-        )  # (B, G, G, A * (5 + C)) -> (B, G, G, A, 5 + C)
+        # # convert tx, ty, tw, th to xywh
+        # pred = pred.permute(0, 2, 3, 1).view(
+        #     -1, G, G, A, self.num_classes + 5
+        # )  # (B, G, G, A * (5 + C)) -> (B, G, G, A, 5 + C)
 
-        pred_txy = pred[:, :, :, :, :2]  # (B, G, G, A, 2)
-        pred_twh = pred[:, :, :, :, 2:4]  # (B, G, G, A, 2)
-        pred_class_pred = pred[:, :, :, :, 5:]  # (B, G, G, A, C)
+        # pred_txy = pred[:, :, :, :, :2]  # (B, G, G, A, 2)
+        # pred_twh = pred[:, :, :, :, 2:4]  # (B, G, G, A, 2)
+        # pred_class_pred = pred[:, :, :, :, 5:]  # (B, G, G, A, C)
 
-        # relative xy to cell
-        pred_xy = pred_txy.sigmoid()
+        # # relative xy to cell
+        # pred_xy = pred_txy.sigmoid()
 
-        # convert tw, th to wh
-        pred_wh = pred_twh.exp() * self.anchors.unsqueeze(0).unsqueeze(0).unsqueeze(
-            0
-        )  # (B, G, G, A, 2)
+        # # convert tw, th to wh
+        # pred_wh = pred_twh.exp() * self.anchors.unsqueeze(0).unsqueeze(0).unsqueeze(
+        #     0
+        # )  # (B, G, G, A, 2)
 
         # let O = # of cells that contain an object
-        obj_pred_xy = pred_xy[obj_mask]  # (O, A, 2)
-        obj_pred_wh = pred_wh[obj_mask]  # (O, A, 2)
+        # obj_pred_xy = pred_xy[obj_mask]  # (O, A, 2)
+        # obj_pred_wh = pred_wh[obj_mask]  # (O, A, 2)
 
-        print(
-            "obj_pred_xy.shape",
-            obj_pred_xy.shape,
-            "obj_pred_wh.shape",
-            obj_pred_wh.shape,
-        )
-        print(obj_pred_xy, obj_pred_wh)
+        # print(
+        #     "obj_pred_xy.shape",
+        #     obj_pred_xy.shape,
+        #     "obj_pred_wh.shape",
+        #     obj_pred_wh.shape,
+        # )
+        # print(obj_pred_xy, obj_pred_wh)
 
         # get target bounding boxes
-        obj_target = target[obj_mask]  # (O, 6)
-        obj_txy = obj_target[:, :2]  # (O, 2)
-        obj_twh = obj_target[:, 2:-2].view(-1, A, 2)  # (O, A, 2)
+        # obj_target = target[obj_mask]  # (O, 6)
+        # obj_txy = obj_target[:, :2]  # (O, 2)
+        # obj_twh = obj_target[:, 2:-2].view(-1, A, 2)  # (O, A, 2)
 
-        print("obj_target.shape", obj_target.shape, "obj_twh.shape", obj_twh.shape)
+        # print("obj_target.shape", obj_target.shape, "obj_twh.shape", obj_twh.shape)
 
         # calculate box ious
-        obj_pred_xywh = torch.cat((obj_pred_xy, obj_pred_wh), dim=-1)  # (O, A, 4)
-        obj_pred_xywh = obj_pred_xywh.view(-1, 4)  # (O * A, 4)
+        # obj_pred_xywh = torch.cat((obj_pred_xy, obj_pred_wh), dim=-1)  # (O, A, 4)
+        # obj_pred_xywh = obj_pred_xywh.view(-1, 4)  # (O * A, 4)
 
-        print("obj_pred_xywh.shape", obj_pred_xywh.shape)
+        # print("obj_pred_xywh.shape", obj_pred_xywh.shape)
 
         # == coord loss ==
 
         # noobj mask
-        noobj_mask = ~obj_mask
+        # noobj_mask = ~obj_mask
 
         # class prediction loss
 
@@ -254,6 +256,7 @@ def build_targets(
     labels: list[torch.Tensor],
     grid_size: int,
     anchors: torch.Tensor,
+    num_classes: int,
     bbox_format: Literal["coco", "xyxy", "xywh"] = "coco",
 ):
     """
@@ -267,7 +270,7 @@ def build_targets(
     # print("building targets")
     # print("A", A)
 
-    target = torch.zeros(B, A * 2 + 4, grid_size, grid_size)
+    target = torch.zeros(B, A * (5 + num_classes), grid_size, grid_size)
     cell_size = 1 / grid_size
 
     # print("cell size:", cell_size)
@@ -300,18 +303,33 @@ def build_targets(
         # calculate t_w, t_h
         twh = torch.log(
             wh.unsqueeze(1) / anchors.unsqueeze(0)
-        )  # (N, 2), (A, 2) -> (N, A, 2)
+        )  # (N, 1, 2), (1, A, 2) -> (N, A, 2)
 
-        twh = twh.view(-1, A * 2)  # (Z, A * 2)
+        # repeat txy for the number of anchors
+        txy = txy.unsqueeze(1).repeat(1, A, 1)  # (N, 1, 2) -> (N, A, 2)
 
-        # construct target value (t_x, t_y, (t_w, t_h) * A, 1, label)
-        confidence = torch.ones(N, 1)
-        label = label.unsqueeze(1)
+        # construct confidence scores
+        confidence = torch.ones(N, A, 1)
 
-        target_value = torch.cat((txy, twh, confidence, label), dim=1)
+        # construct one hot vectors for class labels
+        class_labels = F.one_hot(label.long(), num_classes).float()  # (N, C)
+        class_labels = class_labels.unsqueeze(1).repeat(
+            1, A, 1
+        )  # (N, 1, C) -> (N, A, C)
 
-        assert target_value.shape == torch.Size([2, 2 + A * 2 + 2])
+        # print("class_labels.shape:", class_labels.shape)
 
-        target[i, :, cell_ij[:, 1], cell_ij[:, 0]] = target_value.T  # (A*2+4, N)
+        # construct target value
+        # print(txy.shape, twh.shape, confidence.shape, class_labels.shape)
+        target_value = torch.cat(
+            [txy, twh, confidence, class_labels], dim=-1
+        )  # (N, A, 5 + C)
+        target_value = target_value.view(N, -1)  # (N, A(5 + C))
+
+        # print("target_value.shape:", target_value.shape)
+
+        assert target_value.shape == torch.Size([2, A * (5 + num_classes)])
+
+        target[i, :, cell_ij[:, 1], cell_ij[:, 0]] = target_value.T  # (A(5 + C), N)
 
     return target
