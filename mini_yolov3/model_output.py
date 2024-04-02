@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import torch
 
 
-def to_bbox_pred(
+def to_bbox(
     pred: torch.Tensor, anchors: torch.Tensor, num_classes: int
 ) -> torch.Tensor:
     """
@@ -86,4 +86,4 @@ class YoloV3Output:
 
     @property
     def bbox_pred(self) -> torch.Tensor:
-        return to_bbox_pred(self.pred, self.anchors, self.num_classes)
+        return to_bbox(self.pred, self.anchors, self.num_classes)

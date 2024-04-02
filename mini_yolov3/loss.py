@@ -3,6 +3,7 @@ from .utils import coco_to_xywh, box_iou, xywh_to_xyxy, xyxy_to_xywh
 import torch.nn as nn
 from typing import Literal
 import torch.nn.functional as F
+from .model_output import to_bbox
 
 
 class YOLOLoss_(nn.Module):
@@ -168,6 +169,8 @@ class YOLOLoss(nn.Module):
         self.anchors = anchors
         self.lambda_coord = lambda_coord
         self.lambda_noobj = lambda_noobj
+        self.mse_loss = nn.MSELoss()
+        self.bce_with_logits_loss = nn.BCEWithLogitsLoss()
 
     def forward(
         self,
@@ -181,6 +184,9 @@ class YOLOLoss(nn.Module):
 
         assert pred.shape[3] == pred.shape[2] == G
 
+        # make global bbox pred
+        bbox_pred = to_bbox(pred, anchors=self.anchors, num_classes=self.num_classes)
+
         # make target tensor
         target = build_targets(
             bboxes=bboxes,
@@ -191,59 +197,104 @@ class YOLOLoss(nn.Module):
             bbox_format=bbox_format,
         )  # (B, A(5 + C), G, G)
 
-        # target = target.permute(0, 2, 3, 1)  # (B, G, G, 6)
+        bbox_target = to_bbox(
+            target, anchors=self.anchors, num_classes=self.num_classes
+        )
 
-        # print("target.shape:", target.shape)
-        # print("pred.shape", pred.shape)
+        print(
+            "pred.shape:",
+            pred.shape,
+            "bbox_pred.shape:",
+            bbox_pred.shape,
+            "target.shape:",
+            target.shape,
+            "bbox_target.shape:",
+            bbox_target.shape,
+        )
+
+        # print(bbox_pred[0, :, 1, 1])
+        # print(bbox_target[0, :, 1, 1])
+
+        # move pred dim to last dim
+        pred = pred.permute(0, 2, 3, 1)
+        target = target.permute(0, 2, 3, 1)
+        bbox_pred = bbox_pred.permute(0, 2, 3, 1)  # (B, G, G, A(5 + C))
+        bbox_target = bbox_target.permute(0, 2, 3, 1)  # (B, G, G, A(5 + C))
+
+        print(target.shape, "target.shape")
 
         # == coord loss ==
-
         # get mask for cells that contain an object
-        # obj_mask = target[:, :, :, -2] == 1  # (B, G, G)
+        obj_mask = target[..., 4] == 1  # (B, G, G)
 
-        # # convert tx, ty, tw, th to xywh
-        # pred = pred.permute(0, 2, 3, 1).view(
-        #     -1, G, G, A, self.num_classes + 5
-        # )  # (B, G, G, A * (5 + C)) -> (B, G, G, A, 5 + C)
-
-        # pred_txy = pred[:, :, :, :, :2]  # (B, G, G, A, 2)
-        # pred_twh = pred[:, :, :, :, 2:4]  # (B, G, G, A, 2)
-        # pred_class_pred = pred[:, :, :, :, 5:]  # (B, G, G, A, C)
-
-        # # relative xy to cell
-        # pred_xy = pred_txy.sigmoid()
-
-        # # convert tw, th to wh
-        # pred_wh = pred_twh.exp() * self.anchors.unsqueeze(0).unsqueeze(0).unsqueeze(
-        #     0
-        # )  # (B, G, G, A, 2)
+        print("obj_mask.shape:", obj_mask.shape, obj_mask)
 
         # let O = # of cells that contain an object
-        # obj_pred_xy = pred_xy[obj_mask]  # (O, A, 2)
-        # obj_pred_wh = pred_wh[obj_mask]  # (O, A, 2)
+        obj_bbox_pred = bbox_pred[obj_mask].view(
+            -1, A, 5 + self.num_classes
+        )  # (O, A, 5 + C)
+        obj_bbox_target = bbox_target[obj_mask].view(
+            -1, A, 5 + self.num_classes
+        )  # (O, A, 5 + C)
 
-        # print(
-        #     "obj_pred_xy.shape",
-        #     obj_pred_xy.shape,
-        #     "obj_pred_wh.shape",
-        #     obj_pred_wh.shape,
-        # )
-        # print(obj_pred_xy, obj_pred_wh)
-
-        # get target bounding boxes
-        # obj_target = target[obj_mask]  # (O, 6)
-        # obj_txy = obj_target[:, :2]  # (O, 2)
-        # obj_twh = obj_target[:, 2:-2].view(-1, A, 2)  # (O, A, 2)
-
-        # print("obj_target.shape", obj_target.shape, "obj_twh.shape", obj_twh.shape)
+        print(
+            "obj_bbox_pred.shape",
+            obj_bbox_pred.shape,
+            "obj_bbox_target.shape",
+            obj_bbox_target.shape,
+        )
 
         # calculate box ious
-        # obj_pred_xywh = torch.cat((obj_pred_xy, obj_pred_wh), dim=-1)  # (O, A, 4)
-        # obj_pred_xywh = obj_pred_xywh.view(-1, 4)  # (O * A, 4)
+        obj_pred_xywh = obj_bbox_pred[..., :4].view(-1, 4)  # (OA, 4)
+        obj_target_xywh = obj_bbox_target[..., :4].view(-1, 4)  # (OA, 4)
 
-        # print("obj_pred_xywh.shape", obj_pred_xywh.shape)
+        print(
+            "obj_pred_xywh.shape",
+            obj_pred_xywh.shape,
+            "obj_target_xywh.shape",
+            obj_target_xywh.shape,
+        )
 
+        ious = box_iou(obj_pred_xywh, obj_target_xywh, format="xywh")  # (OA, )
+        ious = ious.view(-1, A)  # (O, A)
+
+        max_iou, max_iou_idx = ious.max(dim=-1, keepdim=True)  # (O, 1)
+        max_mask = torch.arange(0, A).repeat(ious.shape[0], 1) == max_iou_idx  # (Z, A)
+
+        # reshape pred and target to select bounding box prediction with highest iou
+        # pred = pred.view(-1, G, G, A, 5 + self.num_classes)  # (B, G, G, A, 5 + C)
+        # target = target.view(-1, G, G, A, 5 + self.num_classes)  # (B, G, G, A, 5 + C)
+
+        obj_pred = pred[obj_mask].view(-1, A, 5 + self.num_classes)
+        obj_target = target[obj_mask].view(-1, A, 5 + self.num_classes)
+
+        print("obj_pred.shape", obj_pred.shape, "obj_target.shape", obj_target.shape)
+
+        obj_pred = obj_pred[max_mask]
+        obj_target = obj_target[max_mask]
+
+        obj_pred_txywh = obj_pred[..., :4]  # (O, 4)
+        obj_target_txywh = obj_target[..., :4]  # (O, 4)
+
+        coord_loss = self.lambda_coord * self.mse_loss(obj_pred_txywh, obj_target_txywh)
         # == coord loss ==
+
+        # == confidence loss ==
+        obj_pred_conf = obj_pred[..., 4]  # (O, )
+        conf_loss = -obj_pred_conf.log().mean()  # negative log likelihood
+        # == confidence loss ==
+
+        # == class loss ==
+        obj_pred_class = obj_pred[..., 5:]  # (O, C)
+        obj_target_class = obj_target[..., 5:]  # (O, C)
+
+        print(obj_pred_class, obj_target_class)
+
+        class_loss = self.bce_with_logits_loss(obj_pred_class, obj_target_class)
+
+        print(class_loss)
+
+        # == class loss ==
 
         # noobj mask
         # noobj_mask = ~obj_mask
