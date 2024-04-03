@@ -87,3 +87,7 @@ class YoloV3Output:
     @property
     def bbox_pred(self) -> torch.Tensor:
         return to_bbox(self.pred, self.anchors, self.num_classes)
+
+    @property
+    def bounding_boxes(self) -> torch.Tensor:
+        pass
