@@ -11,6 +11,11 @@ class ObjectDetectionData(TypedDict):
 
 
 class ObjectDetectionDataset(Dataset):
+    """
+    Dataset for object detection. Each item consists of an image, its bounding boxes in COCO
+    format (x, y, w, h), and corresponding labels for each box.
+    """
+
     def __init__(self):
         pass
 
@@ -19,3 +24,15 @@ class ObjectDetectionDataset(Dataset):
 
     def __getitem__(self, idx: int) -> ObjectDetectionData:
         pass
+
+
+def collate_fn(batch):
+    images = torch.stack([item["image"] for item in batch], dim=0)
+    bbox = [item["bbox"] for item in batch]
+    labels = [item["labels"] for item in batch]
+
+    return {
+        "images": images,
+        "bbox": bbox,
+        "labels": labels,
+    }

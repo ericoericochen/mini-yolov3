@@ -1,6 +1,9 @@
 import torch
 from .utils import box_iou
 import torch.nn.functional as F
+from .model import MiniYOLOV3
+from typing import Union
+from PIL import Image
 
 
 def flatten_bboxes(
@@ -61,3 +64,7 @@ def non_maximum_suppression(bboxes: torch.Tensor, threshold: float = 0.5):
     nms_bboxes = torch.stack(selected_bboxes, dim=0)
 
     return nms_bboxes
+
+
+def run(model: MiniYOLOV3, images: Union[torch.Tensor, list[Image.Image]]):
+    pass
