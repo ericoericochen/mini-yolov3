@@ -82,16 +82,15 @@ def xyxy_to_xywh(bbox: torch.Tensor):
 
 def draw_bounding_boxes(
     image: Image.Image,
-    bbox: torch.Tensor,
+    bboxes: torch.Tensor,
     labels: Union[torch.Tensor, list[str]],
-    bbox_format: Literal["coco", "xyxy", "xywh"] = "coco",
 ):
     """
     Draw bounding boxes on an image with labels
 
     Params:
         - image: image to draw bounding boxes on
-        - bbox: normalized bbox between [0, 1] (B, 4)
+        - bbox: normalized bbox between [0, 1] (B, 4), MUST be in xyxy format
         - labels: list of labels for each bounding box
         - format: format of the bounding box, either "coco" | "xyxy" | "xywh"
     """
@@ -102,23 +101,15 @@ def draw_bounding_boxes(
     # convert image to be in range [0, 255]
     image = (image * 255).to(torch.uint8)
 
-    # convert bbox to xyxy
-    bbox = bbox.clone()
-    if bbox_format == "coco":
-        bbox = coco_to_xyxy(bbox)
-    elif bbox_format == "xywh":
-        bbox = xywh_to_xyxy(bbox)
-
     # rescale bbox to image size
     w, h = image.shape[2], image.shape[1]
 
-    bbox[:, [0, 2]] *= w  # scale x coords
-    bbox[:, [1, 3]] *= h  # scale y coords
-
-    print(bbox.shape)
+    bboxes = bboxes.clone()
+    bboxes[:, [0, 2]] *= w  # scale x coords
+    bboxes[:, [1, 3]] *= h  # scale y coords
 
     bounding_box_image = torchvision.utils.draw_bounding_boxes(
-        image, boxes=bbox, labels=labels
+        image, boxes=bboxes, labels=labels
     )
     pil_image = torchvision.transforms.ToPILImage()(bounding_box_image)
 

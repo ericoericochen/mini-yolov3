@@ -6,7 +6,7 @@ import torch
 
 class ObjectDetectionData(TypedDict):
     image: Image.Image
-    bbox: torch.Tensor
+    bboxes: torch.Tensor
     labels: torch.Tensor
 
 
@@ -28,11 +28,11 @@ class ObjectDetectionDataset(Dataset):
 
 def collate_fn(batch):
     images = torch.stack([item["image"] for item in batch], dim=0)
-    bbox = [item["bbox"] for item in batch]
+    bboxes = [item["bbox"] for item in batch]
     labels = [item["labels"] for item in batch]
 
     return {
         "images": images,
-        "bbox": bbox,
+        "bboxes": bboxes,
         "labels": labels,
     }

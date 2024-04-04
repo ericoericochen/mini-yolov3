@@ -1,9 +1,10 @@
 import torch
-from .utils import coco_to_xywh, box_iou, xywh_to_xyxy, xyxy_to_xywh
+from .utils import box_iou
 import torch.nn as nn
 from typing import Literal
 import torch.nn.functional as F
 from .model_output import to_bbox
+from torchvision.ops import box_convert
 
 
 class YOLOLoss(nn.Module):
@@ -169,48 +170,42 @@ class YOLOLoss(nn.Module):
 def build_targets(
     bboxes: list[torch.Tensor],
     labels: list[torch.Tensor],
-    grid_size: int,
+    grid_size: tuple[int, int],
     anchors: torch.Tensor,
     num_classes: int,
-    bbox_format: Literal["coco", "xyxy", "xywh"] = "coco",
 ):
     """
     Construct Target for Loss Calculation
+
+    Params:
+        - bboxes: list of bounding boxes in xywh format
+        - grid_size: tuple of grid size (W, H)
 
     Returns: (B, A * 6, G, G)
     """
     A = anchors.shape[0]
     B = len(bboxes)
+    W, H = grid_size
 
-    # print("building targets")
-    # print("A", A)
+    grid_dim = torch.tensor(grid_size, device=bboxes[0].device)
+    cell_size = 1 / grid_dim
 
-    target = torch.zeros(B, A * (5 + num_classes), grid_size, grid_size)
-    cell_size = 1 / grid_size
-
-    # print("cell size:", cell_size)
+    # target tensor where each cell contains (tx, ty, tw, th, confidence, class scores, ... repeat)
+    target = torch.zeros(B, A * (5 + num_classes), H, W)
 
     for i, (bbox, label) in enumerate(zip(bboxes, labels)):
-        N = bbox.shape[0]  # number of bounding boxes
+        # convert bbox to cxcywh format
+        bbox = box_convert(bbox, in_fmt="xywh", out_fmt="cxcywh")
 
-        # convert bbox to xywh
-        if bbox_format == "coco":
-            bbox = coco_to_xywh(bbox)
-        elif bbox_format == "xyxy":
-            bbox = xyxy_to_xywh(bbox)
+        N = bbox.shape[0]  # number of bounding boxes
 
         # get the cell each bbox belongs to
         xy = bbox[:, :2]  # (N, 2)
         wh = bbox[:, 2:]  # (N, 2)
         cell_ij = (xy // cell_size).int()
 
-        # print("xy", xy)
-
         # c_x, c_y from the paper
         offsets = cell_ij * cell_size
-
-        # print("cell and offsets")
-        # print(cell_ij, offsets)
 
         eps = 1e-8
         txy = -torch.log(1 / (xy - offsets + eps) - 1)  # t_x, t_y (N, 2)
@@ -232,16 +227,11 @@ def build_targets(
             1, A, 1
         )  # (N, 1, C) -> (N, A, C)
 
-        # print("class_labels.shape:", class_labels.shape)
-
         # construct target value
-        # print(txy.shape, twh.shape, confidence.shape, class_labels.shape)
         target_value = torch.cat(
             [txy, twh, confidence, class_labels], dim=-1
         )  # (N, A, 5 + C)
         target_value = target_value.view(N, -1)  # (N, A(5 + C))
-
-        # print("target_value.shape:", target_value.shape)
 
         assert target_value.shape == torch.Size([2, A * (5 + num_classes)])
 
