@@ -1,10 +1,10 @@
 import torch
-from .utils import box_iou
+
+# from .utils import box_iou
 import torch.nn as nn
-from typing import Literal
 import torch.nn.functional as F
 from .model_output import to_bbox
-from torchvision.ops import box_convert
+from torchvision.ops import box_convert, box_iou
 
 
 class YOLOLoss(nn.Module):
@@ -35,9 +35,6 @@ class YOLOLoss(nn.Module):
         """
         A = self.anchors.shape[0]
 
-        # make global bbox pred
-        bbox_pred = to_bbox(pred, anchors=self.anchors, num_classes=self.num_classes)
-
         # make target tensor
         grid_size = (pred.shape[3], pred.shape[2])  # W, H
         target = build_targets(
@@ -46,39 +43,22 @@ class YOLOLoss(nn.Module):
             grid_size=grid_size,
             anchors=self.anchors,
             num_classes=self.num_classes,
-        )  # (B, A(5 + C), G, G)
+        )  # (B, A(5 + C), H, W)
 
+        # make global bbox pred and target
+        bbox_pred = to_bbox(pred, anchors=self.anchors, num_classes=self.num_classes)
         bbox_target = to_bbox(
             target, anchors=self.anchors, num_classes=self.num_classes
         )
 
-        print(
-            "pred.shape:",
-            pred.shape,
-            "bbox_pred.shape:",
-            bbox_pred.shape,
-            "target.shape:",
-            target.shape,
-            "bbox_target.shape:",
-            bbox_target.shape,
-        )
-
-        # print(bbox_pred[0, :, 1, 1])
-        # print(bbox_target[0, :, 1, 1])
-
         # move pred dim to last dim
-        pred = pred.permute(0, 2, 3, 1)
-        target = target.permute(0, 2, 3, 1)
-        bbox_pred = bbox_pred.permute(0, 2, 3, 1)  # (B, G, G, A(5 + C))
-        bbox_target = bbox_target.permute(0, 2, 3, 1)  # (B, G, G, A(5 + C))
+        pred = pred.permute(0, 2, 3, 1)  # (B, H, W, A(5 + C))
+        target = target.permute(0, 2, 3, 1)  # (B, H, W, A(5 + C))
+        bbox_pred = bbox_pred.permute(0, 2, 3, 1)  # (B, H, W, A(5 + C))
+        bbox_target = bbox_target.permute(0, 2, 3, 1)  # (B, H, W, A(5 + C))
 
-        print(target.shape, "target.shape")
-
-        # == coord loss ==
         # get mask for cells that contain an object
         obj_mask = target[..., 4] == 1  # (B, G, G)
-
-        print("obj_mask.shape:", obj_mask.shape, obj_mask)
 
         # let O = # of cells that contain an object
         obj_bbox_pred = bbox_pred[obj_mask].view(
@@ -88,38 +68,23 @@ class YOLOLoss(nn.Module):
             -1, A, 5 + self.num_classes
         )  # (O, A, 5 + C)
 
-        print(
-            "obj_bbox_pred.shape",
-            obj_bbox_pred.shape,
-            "obj_bbox_target.shape",
-            obj_bbox_target.shape,
-        )
-
         # calculate box ious
         obj_pred_xywh = obj_bbox_pred[..., :4].view(-1, 4)  # (OA, 4)
         obj_target_xywh = obj_bbox_target[..., :4].view(-1, 4)  # (OA, 4)
 
-        print(
-            "obj_pred_xywh.shape",
-            obj_pred_xywh.shape,
-            "obj_target_xywh.shape",
-            obj_target_xywh.shape,
-        )
+        # convert xywh to xyxy
+        obj_pred_xyxy = box_convert(obj_pred_xywh, in_fmt="cxcywh", out_fmt="xyxy")
+        obj_target_xyxy = box_convert(obj_target_xywh, in_fmt="cxcywh", out_fmt="xyxy")
 
-        ious = box_iou(obj_pred_xywh, obj_target_xywh, format="xywh")  # (OA, )
+        ious = box_iou(obj_pred_xyxy, obj_target_xyxy).diag()  # (OA, )
         ious = ious.view(-1, A)  # (O, A)
 
         max_iou, max_iou_idx = ious.max(dim=-1, keepdim=True)  # (O, 1)
         max_mask = torch.arange(0, A).repeat(ious.shape[0], 1) == max_iou_idx  # (Z, A)
 
         # reshape pred and target to select bounding box prediction with highest iou
-        # pred = pred.view(-1, G, G, A, 5 + self.num_classes)  # (B, G, G, A, 5 + C)
-        # target = target.view(-1, G, G, A, 5 + self.num_classes)  # (B, G, G, A, 5 + C)
-
-        obj_pred = pred[obj_mask].view(-1, A, 5 + self.num_classes)
-        obj_target = target[obj_mask].view(-1, A, 5 + self.num_classes)
-
-        print("obj_pred.shape", obj_pred.shape, "obj_target.shape", obj_target.shape)
+        obj_pred = pred[obj_mask].view(-1, A, 5 + self.num_classes)  # (O, A, 5 + C)
+        obj_target = target[obj_mask].view(-1, A, 5 + self.num_classes)  # (O, A, 5 + C)
 
         obj_pred = obj_pred[max_mask]
         obj_target = obj_target[max_mask]
@@ -127,6 +92,7 @@ class YOLOLoss(nn.Module):
         obj_pred_txywh = obj_pred[..., :4]  # (O, 4)
         obj_target_txywh = obj_target[..., :4]  # (O, 4)
 
+        # == coord loss ==
         coord_loss = self.lambda_coord * self.mse_loss(obj_pred_txywh, obj_target_txywh)
         # == coord loss ==
 
@@ -143,12 +109,7 @@ class YOLOLoss(nn.Module):
         obj_pred_class = obj_pred[..., 5:]  # (O, C)
         obj_target_class = obj_target[..., 5:]  # (O, C)
 
-        print(obj_pred_class, obj_target_class)
-
         class_loss = self.bce_loss(obj_pred_class, obj_target_class)
-
-        print(class_loss)
-
         # == class loss ==
 
         # == noobj conf loss
@@ -161,7 +122,6 @@ class YOLOLoss(nn.Module):
         )
 
         # == noobj conf loss
-
         loss = coord_loss + obj_conf_loss + class_loss + noobj_loss
 
         return loss
