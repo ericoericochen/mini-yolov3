@@ -196,23 +196,3 @@ def box_iou(
     iou = intersection / union
 
     return iou
-
-
-# def scale_bbox_to_global_xy(bboxes: torch.Tensor) -> torch.Tensor:
-#     """
-#     Scales coordinates (x, y) of bounding box predictions to global image coordinates.
-
-#     Bounding Box predictions are relative to the cell they're in.
-
-#     Expects bbox to be in (x_c, y_c, w, h) format
-#     """
-
-#     cell_size = 1 / grid_size
-#     x_indices = list(range(0, dim, num_classes + 5))
-#     x_offsets = torch.arange(0, grid_size).repeat(grid_size, 1) * cell_size  # (H, W)
-
-#     y_indices = list(range(1, dim, num_classes + 5))
-#     y_offsets = x_offsets.T
-
-#     pred[:, x_indices, :, :] += x_offsets
-#     pred[:, y_indices, :, :] += y_offsets

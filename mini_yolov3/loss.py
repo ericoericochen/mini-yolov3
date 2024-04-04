@@ -28,24 +28,24 @@ class YOLOLoss(nn.Module):
         pred: torch.Tensor,
         bboxes: list[torch.Tensor],
         labels: list[torch.Tensor],
-        bbox_format: Literal["coco", "xywh", "xyxy"] = "coco",
     ):
+        """
+        Params:
+            - pred: model prediction (B, A(C + 5), G, G) in cxcywh format with confidence scores and class probabilities
+        """
         A = self.anchors.shape[0]
-        G = pred.shape[2]
-
-        assert pred.shape[3] == pred.shape[2] == G
 
         # make global bbox pred
         bbox_pred = to_bbox(pred, anchors=self.anchors, num_classes=self.num_classes)
 
         # make target tensor
+        grid_size = (pred.shape[3], pred.shape[2])  # W, H
         target = build_targets(
             bboxes=bboxes,
             labels=labels,
-            grid_size=G,
+            grid_size=grid_size,
             anchors=self.anchors,
             num_classes=self.num_classes,
-            bbox_format=bbox_format,
         )  # (B, A(5 + C), G, G)
 
         bbox_target = to_bbox(
