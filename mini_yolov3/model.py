@@ -23,4 +23,6 @@ class MiniYOLOV3(nn.Module):
             x.shape[2] == x.shape[3] == self.image_size
         ), f"Invalid image size, height and width should equal {self.image_size}"
 
-        return self.conv(x)
+        x = self.conv(x)
+
+        return x
