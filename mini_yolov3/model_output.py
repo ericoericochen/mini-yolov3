@@ -104,8 +104,10 @@ def to_bbox(
     y_offsets = y_indices.unsqueeze(0).unsqueeze(-1) * 1 / H
 
     # apply sigmoid to t_x and t_y and add offset
-    pred_x = pred_tx.sigmoid() + x_offsets
-    pred_y = pred_ty.sigmoid() + y_offsets
+    pred_x = pred_tx.sigmoid() * (1 / W) + x_offsets
+    pred_y = pred_ty.sigmoid() * (1 / H) + y_offsets
+    # pred_x = pred_tx.sigmoid() * (1 / W) + x_offsets
+    # pred_y = pred_ty.sigmoid() * (1 / H) + y_offsets
 
     # apply exp to twh and multiply with anchors
     anchors_batch = anchors.unsqueeze(0).unsqueeze(0).unsqueeze(0)

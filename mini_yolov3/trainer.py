@@ -52,53 +52,112 @@ class Trainer:
         self.device = device
 
     def train(self):
-        self.model.to(self.device)
+        criterion = torch.nn.MSELoss()
+
+        model = self.model.to(self.device)
+        # model = torch.nn.Conv2d(3, 15, 2, 2).to(self.device)
+        # model = self.model.conv.to(self.device)
 
         optimizer = torch.optim.Adam(
-            self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay
-        )
-
-        criterion = YOLOLoss(
-            num_classes=self.model.num_classes,
-            anchors=self.model.anchors,
-            lambda_coord=self.lambda_coord,
-            lambda_noobj=self.lambda_noobj,
+            model.parameters(), lr=self.lr, weight_decay=self.weight_decay
         )
 
         losses = []
         num_iters = self.num_epochs * len(self.train_loader)
         with tqdm(total=num_iters) as pbar:
             for epoch in range(self.num_epochs):
-                for data in self.train_loader:
-                    images, bboxes, labels = (
-                        data["images"],
-                        data["bboxes"],
-                        data["labels"],
-                    )
+                images = torch.ones(1, 3, 32, 32).to(self.device)
+                # images = torch.rand_like(images).to(self.device)
 
-                    images = images.to(self.device)
-                    bboxes = [bbox.to(self.device) for bbox in bboxes]
-                    labels = [label.to(self.device) for label in labels]
+                # make predictions
+                pred = model(images)
+                # pred = net(images).permute(0, 2, 3, 1)
+                target = torch.zeros_like(pred)
 
-                    # make predictions
-                    pred = self.model(images)
+                loss = criterion(pred, target)
 
-                    # compute loss
-                    loss = criterion(pred, bboxes, labels)
+                # backprop
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
 
-                    # backprop
-                    optimizer.zero_grad()
-                    loss["loss"].backward()
-                    optimizer.step()
-
-                    losses.append(loss["loss"].item())
-                    pbar.set_postfix(
-                        loss=loss["loss"].item(),
-                        # coord_loss=loss["coord_loss"].item(),
-                        # obj_conf_loss=loss["obj_conf_loss"].item(),
-                        # class_loss=loss["class_loss"].item(),
-                        # noobj_loss=loss["noobj_loss"].item(),
-                    )
-                    pbar.update(1)
+                losses.append(loss.item())
+                pbar.set_postfix(
+                    loss=loss.item(),
+                )
+                pbar.update(1)
 
         return losses
+
+    # def train(self):
+    #     criterion = YOLOLoss(
+    #         num_classes=self.model.num_classes,
+    #         anchors=self.model.anchors,
+    #         lambda_coord=self.lambda_coord,
+    #         lambda_noobj=self.lambda_noobj,
+    #     )
+
+    #     model = self.model.to(self.device)
+    #     optimizer = torch.optim.Adam(
+    #         model.parameters(), lr=self.lr, weight_decay=self.weight_decay
+    #     )
+
+    #     losses = []
+    #     num_iters = self.num_epochs * len(self.train_loader)
+    #     with tqdm(total=num_iters) as pbar:
+    #         for epoch in range(self.num_epochs):
+    #             for data in self.train_loader:
+    #                 # images, bboxes, labels = (
+    #                 #     data["images"],
+    #                 #     data["bboxes"],
+    #                 #     data["labels"],
+    #                 # )
+
+    #                 # images = images.to(self.device)
+    #                 # bboxes = [bbox.to(self.device) for bbox in bboxes]
+    #                 # labels = [label.to(self.device) for label in labels]
+
+    #                 images = torch.ones(1, 3, 32, 32).to(self.device)
+    #                 # images = torch.rand_like(images).to(self.device)
+
+    #                 # make predictions
+    #                 pred = self.model(images)
+    #                 # pred = net(images).permute(0, 2, 3, 1)
+    #                 target = torch.zeros_like(pred)
+
+    #                 loss = torch.nn.MSELoss()(pred, target)
+
+    #                 # backprop
+    #                 optimizer.zero_grad()
+    #                 loss.backward()
+    #                 optimizer.step()
+
+    #                 losses.append(loss.item())
+    #                 pbar.set_postfix(
+    #                     loss=loss.item(),
+    #                 )
+    #                 pbar.update(1)
+
+    #                 # raise RuntimeError
+
+    #                 continue
+
+    #                 # compute loss
+    #                 # loss = criterion(pred, bboxes, labels)
+
+    #                 # backprop
+    #                 optimizer.zero_grad()
+    #                 loss["loss"].backward()
+    #                 optimizer.step()
+
+    #                 losses.append(loss["loss"].item())
+    #                 pbar.set_postfix(
+    #                     loss=loss["loss"].item(),
+    #                     # coord_loss=loss["coord_loss"].item(),
+    #                     # obj_conf_loss=loss["obj_conf_loss"].item(),
+    #                     # class_loss=loss["class_loss"].item(),
+    #                     # noobj_loss=loss["noobj_loss"].item(),
+    #                 )
+    #                 pbar.update(1)
+
+    #     return losses
