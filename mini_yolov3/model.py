@@ -7,10 +7,11 @@ class MiniYOLOV3(nn.Module):
         super().__init__()
         self.image_size = image_size
         self.num_classes = num_classes
-        self.anchors = anchors
+        # self.anchors = anchors
+
+        self.register_buffer("anchors", anchors)
 
         A = anchors.shape[0]
-
         self.conv = nn.Sequential(
             nn.Conv2d(3, 32, 3, 2, 1),
             nn.ReLU(),

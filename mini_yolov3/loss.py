@@ -21,7 +21,7 @@ class YOLOLoss(nn.Module):
         self.lambda_coord = lambda_coord
         self.lambda_noobj = lambda_noobj
         self.mse_loss = nn.MSELoss()
-        self.bce_loss = nn.BCELoss()
+        self.bce_loss = nn.BCEWithLogitsLoss()
 
     def forward(
         self,
@@ -80,7 +80,10 @@ class YOLOLoss(nn.Module):
         ious = ious.view(-1, A)  # (O, A)
 
         max_iou, max_iou_idx = ious.max(dim=-1, keepdim=True)  # (O, 1)
-        max_mask = torch.arange(0, A).repeat(ious.shape[0], 1) == max_iou_idx  # (Z, A)
+        max_mask = (
+            torch.arange(0, A, device=pred.device).repeat(ious.shape[0], 1)
+            == max_iou_idx
+        )  # (Z, A)
 
         # reshape pred and target to select bounding box prediction with highest iou
         obj_pred = pred[obj_mask].view(-1, A, 5 + self.num_classes)  # (O, A, 5 + C)
@@ -93,6 +96,9 @@ class YOLOLoss(nn.Module):
         obj_target_txywh = obj_target[..., :4]  # (O, 4)
 
         # == coord loss ==
+        # print(obj_pred_txywh)
+        # print(obj_target_txywh)
+
         coord_loss = self.lambda_coord * self.mse_loss(obj_pred_txywh, obj_target_txywh)
         # == coord loss ==
 
@@ -124,7 +130,13 @@ class YOLOLoss(nn.Module):
         # == noobj conf loss
         loss = coord_loss + obj_conf_loss + class_loss + noobj_loss
 
-        return loss
+        return {
+            "loss": loss,
+            "coord_loss": coord_loss,
+            "obj_conf_loss": obj_conf_loss,
+            "class_loss": class_loss,
+            "noobj_loss": noobj_loss,
+        }
 
 
 def build_targets(
@@ -151,7 +163,7 @@ def build_targets(
     cell_size = 1 / grid_dim
 
     # target tensor where each cell contains (tx, ty, tw, th, confidence, class scores, ... repeat)
-    target = torch.zeros(B, A * (5 + num_classes), H, W)
+    target = torch.zeros(B, A * (5 + num_classes), H, W).to(bboxes[0].device)
 
     for i, (bbox, label) in enumerate(zip(bboxes, labels)):
         # convert bbox to cxcywh format
@@ -179,7 +191,7 @@ def build_targets(
         txy = txy.unsqueeze(1).repeat(1, A, 1)  # (N, 1, 2) -> (N, A, 2)
 
         # construct confidence scores
-        confidence = torch.ones(N, A, 1)
+        confidence = torch.ones(N, A, 1).to(bbox.device)
 
         # construct one hot vectors for class labels
         class_labels = F.one_hot(label.long(), num_classes).float()  # (N, C)

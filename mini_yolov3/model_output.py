@@ -98,7 +98,7 @@ def to_bbox(
     pred_rest = pred[..., 4:]  # (B, H, W, A, 1 + C)
 
     # get c_x, c_y
-    X, Y = torch.arange(0, W), torch.arange(H)
+    X, Y = torch.arange(0, W, device=pred.device), torch.arange(H, device=pred.device)
     x_indices, y_indices = torch.meshgrid(X, Y, indexing="xy")
     x_offsets = x_indices.unsqueeze(0).unsqueeze(-1) * 1 / W
     y_offsets = y_indices.unsqueeze(0).unsqueeze(-1) * 1 / H

@@ -6,7 +6,7 @@ import torch
 
 class ObjectDetectionData(TypedDict):
     image: Image.Image
-    bboxes: torch.Tensor
+    bbox: torch.Tensor
     labels: torch.Tensor
 
 
