@@ -92,7 +92,13 @@ class Trainer:
                     optimizer.step()
 
                     losses.append(loss["loss"].item())
-                    pbar.set_postfix(loss)
+                    pbar.set_postfix(
+                        loss=loss["loss"].item(),
+                        # coord_loss=loss["coord_loss"].item(),
+                        # obj_conf_loss=loss["obj_conf_loss"].item(),
+                        # class_loss=loss["class_loss"].item(),
+                        # noobj_loss=loss["noobj_loss"].item(),
+                    )
                     pbar.update(1)
 
         return losses

@@ -15,8 +15,12 @@ class MiniYOLOV3(nn.Module):
         self.conv = nn.Sequential(
             nn.Conv2d(3, 32, 3, 2, 1),
             nn.ReLU(),
-            nn.LayerNorm(32),
+            nn.LayerNorm(16),
+            nn.Conv2d(32, 32, 3, 2, 1),
+            nn.ReLU(),
             nn.Conv2d(32, A * (5 + num_classes), 3, 2, 1),
+            nn.ReLU(),
+            nn.Conv2d(A * (5 + num_classes), A * (5 + num_classes), 1, 1),
         )
 
     def forward(self, x: torch.Tensor):

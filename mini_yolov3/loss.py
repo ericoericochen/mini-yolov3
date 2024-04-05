@@ -96,8 +96,10 @@ class YOLOLoss(nn.Module):
         obj_target_txywh = obj_target[..., :4]  # (O, 4)
 
         # == coord loss ==
-        # print(obj_pred_txywh)
-        # print(obj_target_txywh)
+        obj_pred_txywh[:, :2].sigmoid_()
+        obj_target_txywh[:, :2].sigmoid_()
+        print("pred: ", obj_pred_txywh)
+        print("target: ", obj_target_txywh)
 
         coord_loss = self.lambda_coord * self.mse_loss(obj_pred_txywh, obj_target_txywh)
         # == coord loss ==
@@ -128,14 +130,15 @@ class YOLOLoss(nn.Module):
         )
 
         # == noobj conf loss
-        loss = coord_loss + obj_conf_loss + class_loss + noobj_loss
+        # loss = coord_loss + obj_conf_loss + class_loss + noobj_loss
+        loss = coord_loss
 
         return {
             "loss": loss,
-            "coord_loss": coord_loss,
-            "obj_conf_loss": obj_conf_loss,
-            "class_loss": class_loss,
-            "noobj_loss": noobj_loss,
+            # "coord_loss": coord_loss,
+            # "obj_conf_loss": obj_conf_loss,
+            # "class_loss": class_loss,
+            # "noobj_loss": noobj_loss,
         }
 
 
