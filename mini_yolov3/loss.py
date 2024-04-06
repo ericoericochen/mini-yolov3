@@ -2,8 +2,62 @@ import torch
 
 import torch.nn as nn
 import torch.nn.functional as F
-from .model_output import to_bbox
 from torchvision.ops import box_convert, box_iou
+
+
+# TODO: refactor later minor changes
+def convert_yolo_pred_to_bbox(
+    pred: torch.Tensor, anchors: torch.Tensor, num_classes: int
+) -> torch.Tensor:
+    """
+    Converts model prediction to bounding box predictions by transforming t_x, t_y to x, y and t_w, t_h to w, h
+    and converting confidence scores and class scores to probabilities.
+
+    Params:
+        - pred: (B, H, W, A(C + 5)) in cxcywh format with confidence scores and class probabilities
+    """
+
+    B = pred.shape[0]
+    W, H = pred.shape[2], pred.shape[1]
+    A = anchors.shape[0]
+
+    pred = pred.view(-1, H, W, A, 5 + num_classes)  # (B, H, W, A, 5 + C)
+
+    pred_tx = pred[..., 0]  # (B, H, W, A)
+    pred_ty = pred[..., 1]  # (B, H, W, A)
+    pred_twh = pred[..., 2:4]  # (B, W, W, A, 2)
+    pred_confidence = pred[..., 4:5]  # (B, H, W, A, 1)
+    pred_class_scores = pred[..., 5:]  # (B, H, W, A, C)
+
+    # get c_x, c_y
+    X, Y = torch.arange(0, W, device=pred.device), torch.arange(H, device=pred.device)
+    x_indices, y_indices = torch.meshgrid(X, Y, indexing="xy")
+    x_offsets = x_indices.unsqueeze(0).unsqueeze(-1) * 1 / W
+    y_offsets = y_indices.unsqueeze(0).unsqueeze(-1) * 1 / H
+
+    # apply sigmoid to t_x and t_y and add offset
+    pred_x = pred_tx.sigmoid() * (1 / W) + x_offsets
+    pred_y = pred_ty.sigmoid() * (1 / H) + y_offsets
+
+    # apply exp to twh and multiply with anchors
+    anchors_batch = anchors.unsqueeze(0).unsqueeze(0).unsqueeze(0)
+    pred_wh = pred_twh.exp() * anchors_batch
+
+    # concatenate t_x, t_y, t_w, t_h, conf, and class scores
+    bbox_pred = torch.cat(
+        [
+            pred_x.unsqueeze(-1),
+            pred_y.unsqueeze(-1),
+            pred_wh,
+            pred_confidence,
+            pred_class_scores,
+        ],
+        dim=-1,
+    ).view(
+        B, H, W, -1
+    )  # (B, H, W, A(C + 5))
+
+    return bbox_pred
 
 
 class YOLOLoss(nn.Module):
@@ -33,7 +87,6 @@ class YOLOLoss(nn.Module):
         Params:
             - pred: model prediction (B, H, W, A(C + 5)) in cxcywh format with confidence scores and class probabilities
         """
-        B = pred.shape[0]
         A = self.anchors.shape[0]
 
         # make target tensor
@@ -44,103 +97,58 @@ class YOLOLoss(nn.Module):
             grid_size=grid_size,
             anchors=self.anchors,
             num_classes=self.num_classes,
-        )  # (B, A(5 + C), H, W)
+        )  # (B, H, W, A(5 + C))
 
         # make global bbox pred and target
-        bbox_pred = to_bbox(pred, anchors=self.anchors, num_classes=self.num_classes)
-        bbox_target = to_bbox(
+        bbox_pred = convert_yolo_pred_to_bbox(
+            pred, anchors=self.anchors, num_classes=self.num_classes
+        )
+        bbox_target = convert_yolo_pred_to_bbox(
             target, anchors=self.anchors, num_classes=self.num_classes
         )
 
+        bbox_pred = bbox_pred.view(-1, 5 + self.num_classes)
+        bbox_target = bbox_target.view(-1, 5 + self.num_classes)
+
+        pred = pred.contiguous().view(-1, 5 + self.num_classes)
+        target = target.view(-1, 5 + self.num_classes)
+
         # get mask for cells that contain an object
-        obj_mask = target[..., 4] == 1  # (B, H, W)
+        obj_mask = bbox_target[..., 4] == 1  # (B, H, W)
 
         # get obj pred and target
-        obj_pred = bbox_pred[obj_mask]
-        target_pred = bbox_target[obj_mask]
+        obj_pred = pred[obj_mask]
+        obj_target = target[obj_mask]
 
-        # let O = # of cells that contain an object
-        obj_bbox_pred = obj_pred.view(
-            -1, A, 5 + self.num_classes
-        )  # (O, A(5 + C)) -> (O, A, 5 + C)
-        obj_bbox_target = target_pred.view(
-            -1, A, 5 + self.num_classes
-        )  # (O, A(5 + C)) -> (O, A, 5 + C)
-
-        # calculate box ious
-        obj_pred_xywh = obj_bbox_pred[..., :4].view(-1, 4)  # (OA, 4)
-        obj_target_xywh = obj_bbox_target[..., :4].view(-1, 4)  # (OA, 4)
-
-        # print(obj_pred_xywh)
-        # print(obj_target_xywh)
-
-        # convert xywh to xyxy
-        obj_pred_xyxy = box_convert(obj_pred_xywh, in_fmt="cxcywh", out_fmt="xyxy")
-        obj_target_xyxy = box_convert(obj_target_xywh, in_fmt="cxcywh", out_fmt="xyxy")
-
-        # select the bbox with the max iou
-        ious = box_iou(obj_pred_xyxy, obj_target_xyxy).diag().detach()  # (OA, )
-        ious = ious.view(-1, A)  # (O, A)
-
-        max_iou, max_iou_idx = ious.max(dim=-1, keepdim=True)  # (O, 1)
-        max_mask = (
-            torch.arange(0, A, device=pred.device).repeat(ious.shape[0], 1)
-            == max_iou_idx
-        )  # (Z, A)
-
-        # reshape pred and target to select bounding box prediction with highest iou
-        obj_pred = pred[obj_mask].view(-1, A, 5 + self.num_classes)  # (O, A, 5 + C)
-        obj_target = target[obj_mask].view(-1, A, 5 + self.num_classes)  # (O, A, 5 + C)
-
-        obj_pred = obj_pred[max_mask]
-        obj_target = obj_target[max_mask]
-
-        # get txywh pred and target
+        # coord loss
         obj_pred_txywh = obj_pred[..., :4]  # (O, 4)
         obj_target_txywh = obj_target[..., :4]  # (O, 4)
 
-        # == coord loss ==
-        # obj_pred_txywh[:, :2].sigmoid_()
-        # obj_target_txywh[:, :2].sigmoid_()
-        # print("pred: ", obj_pred_txywh.shape, obj_pred_txywh)
-        # print("target: ", obj_target_txywh.shape, obj_target_txywh)
-
         coord_loss = self.lambda_coord * self.mse_loss(obj_pred_txywh, obj_target_txywh)
-        # == coord loss ==
 
-        # == confidence loss ==
+        # confidence loss
         obj_pred_conf = obj_pred[..., 4]  # (O, )
+        target_pred_conf = torch.ones_like(obj_pred_conf, device=pred.device)
 
-        obj_target_conf = torch.ones_like(obj_pred_conf, device=pred.device)
-        obj_conf_loss = self.bce_loss(
-            obj_pred_conf, obj_target_conf
-        )  # negative log likelihood
+        obj_conf_loss = self.bce_loss(obj_pred_conf, target_pred_conf)
 
-        # == confidence loss ==
-
-        # == class loss ==
+        # class loss
         obj_pred_class = obj_pred[..., 5:]  # (O, C)
         obj_target_class = obj_target[..., 5:]  # (O, C)
 
         class_loss = self.cross_entropy(obj_pred_class, obj_target_class)
-        # class_loss = self.bce_loss(obj_pred_class, obj_target_class)
-        # == class loss ==
 
-        # == noobj conf loss
-        # noobj mask
+        # noobj conf loss
         noobj_mask = ~obj_mask
         noobj_pred_conf = pred[noobj_mask][:, 4]
-
-        # print(noobj_pred_conf.shape)
-
-        # raise RuntimeError
         noobj_target_conf = torch.zeros_like(noobj_pred_conf, device=pred.device)
+
         noobj_loss = self.lambda_noobj * self.bce_loss(
             noobj_pred_conf, noobj_target_conf
         )
 
-        # == noobj conf loss
-        loss = coord_loss + obj_conf_loss + class_loss + noobj_loss
+        # total loss
+        loss = coord_loss + obj_conf_loss + noobj_loss + class_loss
 
         return (
             loss,
@@ -205,8 +213,21 @@ def build_targets(
         # repeat txy for the number of anchors
         txy = txy.unsqueeze(1).repeat(1, A, 1)  # (N, 1, 2) -> (N, A, 2)
 
+        # get the best bounding box prior -> the twh closest to 0
+        sum_twh = twh.abs().sum(dim=-1)
+        min_twh_idx = sum_twh.argmin(dim=-1)
+
+        # print(sum_twh)
+        # print(min_twh_idx)
+
         # construct confidence scores
-        confidence = torch.ones(N, A, 1).to(bbox.device)
+        # confidence = torch.ones(N, A, 1).to(bbox.device)
+        # print(confidence.shape)
+        confidence = torch.zeros(N, A, 1).to(bbox.device)
+        confidence[:, min_twh_idx] = 1
+        # print(confidence)
+
+        # raise RuntimeError
 
         # construct one hot vectors for class labels
         class_labels = F.one_hot(label.long(), num_classes).float()  # (N, C)
