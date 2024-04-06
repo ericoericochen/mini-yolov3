@@ -13,8 +13,9 @@ class Downsample(nn.Module):
         self.in_channels = in_channels
         self.out_channels = out_channels
 
-        self.downsample = nn.Conv2d(
-            in_channels, out_channels, kernel_size=3, stride=2, padding=1
+        self.downsample = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1),
+            nn.InstanceNorm2d(out_channels, affine=True),
         )
 
     def forward(self, x: torch.Tensor):
@@ -42,12 +43,20 @@ class ResidualBlock(nn.Module):
         return x
 
 
-class Decoder(nn.Module):
+class DetectionLayer(nn.Module):
     def __init__(self, in_channels: int, num_anchors: int, num_classes: int):
         super().__init__()
 
+        dim = num_anchors * (5 + num_classes)
+        self.detection = nn.Sequential(
+            nn.Conv2d(in_channels, dim, 3, 1, 1),
+            nn.InstanceNorm2d(dim, affine=True),
+            nn.LeakyReLU(),
+            nn.Conv2d(dim, dim, 1, 1),
+        )
+
     def forward(self, x: torch.Tensor):
-        pass
+        return self.detection(x)
 
 
 class MiniYOLOV3(nn.Module):
