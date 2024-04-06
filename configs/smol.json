@@ -5,6 +5,16 @@
     {
       "type": "Downsample",
       "in_channels": 3,
+      "out_channels": 8
+    },
+    {
+      "type": "ResidualBlock",
+      "num_blocks": 1,
+      "channels": 8
+    },
+    {
+      "type": "Downsample",
+      "in_channels": 8,
       "out_channels": 16
     },
     {
@@ -16,19 +26,14 @@
       "type": "Downsample",
       "in_channels": 16,
       "out_channels": 32
-    },
-    {
-      "type": "ResidualBlock",
-      "num_blocks": 1,
-      "channels": 32
-    },
-    {
-      "type": "Downsample",
-      "in_channels": 3,
-      "out_channels": 32
     }
   ],
-  "anchors": [],
+  "anchors": [
+    [0.2, 0.8],
+    [0.5, 0.5],
+    [0.2, 0.8],
+    [0.5, 0.5]
+  ],
   "num_anchors_per_scale": 2,
-  "num_detection_layers": 1
+  "num_detection_layers": 2
 }

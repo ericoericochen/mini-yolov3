@@ -129,7 +129,7 @@ class MiniYOLOV3(nn.Module):
             anchors=config["anchors"],
             num_anchors_per_scale=config["num_anchors_per_scale"],
             backbone=backbone,
-            num_decoders=config["num_decoders"],
+            num_detection_layers=config["num_detection_layers"],
         )
 
     def __init__(
@@ -145,6 +145,7 @@ class MiniYOLOV3(nn.Module):
         self.image_size = image_size
         self.num_classes = num_classes
         self.num_anchors_per_scale = num_anchors_per_scale
+        self.num_detection_layers = num_detection_layers
 
         if isinstance(anchors, list):
             anchors = torch.tensor(anchors, dtype=torch.float32)
@@ -157,14 +158,46 @@ class MiniYOLOV3(nn.Module):
             anchors.shape[0] == num_detection_layers * num_anchors_per_scale
         ), "Number of anchors MUST match num_detection_layers x num_anchors_per_scale"
 
+        assert (
+            num_detection_layers <= len(backbone) // 2 + 1
+        ), "num_detection_layers has to be less than the number of downsample layers in the backbone"
+
         self.register_buffer("anchors", anchors)
 
         self.backbone = nn.ModuleList(backbone)
-        # self.upsample = pass
-        self.detection_layers = nn.ModuleList([])
 
-        for i in range(num_detection_layers):
-            pass
+        self.upsample_layers = self._build_upsample_layers()
+        self.detection_layers = self._build_detection_layers()
+
+    def _build_upsample_layers(self):
+        upsample_layers = nn.ModuleList([])
+
+        # out channels of the last downsample layer in backbone
+        down_idx = -1
+        channels = self.backbone[down_idx].out_channels
+
+        for i in range(self.num_detection_layers - 1):
+            down_idx -= 2
+            in_channels = channels - self.backbone[down_idx].out_channels
+            upsample_layers.append(Upsample(in_channels, channels))
+
+        return upsample_layers
+
+    def _build_detection_layers(self):
+        in_channels = self.backbone[-1].out_channels
+
+        detection_layers = nn.ModuleList(
+            [
+                DetectionLayer(
+                    in_channels=in_channels,
+                    num_anchors=self.num_anchors_per_scale,
+                    num_classes=self.num_classes,
+                )
+                for i in range(self.num_detection_layers)
+            ]
+        )
+
+        return detection_layers
 
     def forward(self, x: torch.Tensor):
         x = self.conv(x)
