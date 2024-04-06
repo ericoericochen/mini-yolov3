@@ -1,4 +1,24 @@
 {
   "num_classes": 10,
-  "image_size": 64
+  "image_size": 64,
+  "backbone": [
+    {
+      "type": "Downsample",
+      "in_channels": 3,
+      "out_channels": 16
+    },
+    {
+      "type": "ResidualBlock",
+      "num_blocks": 1,
+      "channels": 16
+    },
+    {
+      "type": "Downsample",
+      "in_channels": 16,
+      "out_channels": 32
+    }
+  ],
+  "anchors": [],
+  "num_anchors_per_scale": 2,
+  "num_decoders": 1
 }

@@ -1,5 +1,21 @@
 import torch.nn as nn
 import torch
+from typing import Union
+
+
+class Downsample(nn.Module):
+    """
+    Downsamples spatial resolution by 2
+    """
+
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__()
+        self.downsample = nn.Conv2d(
+            in_channels, out_channels, kernel_size=3, stride=2, padding=1
+        )
+
+    def forward(self, x: torch.Tensor):
+        return self.downsample(x)
 
 
 class ResidualBlock(nn.Module):
@@ -24,13 +40,68 @@ class ResidualBlock(nn.Module):
 
 
 class MiniYOLOV3(nn.Module):
+    @staticmethod
     def from_config(config: dict):
-        pass
+        print("[loading model from config...]")
 
-    def __init__(self, image_size: int, num_classes: int, anchors: torch.Tensor):
+        backbone = nn.ModuleList([])
+        backbone_def = config["backbone"]
+
+        for i, module_def in enumerate(backbone_def):
+            module_type = module_def["type"]
+
+            if i == 0:
+                assert module_type == "Downsample", "First module must be Downsample"
+
+            if module_type == "ResidualBlock":
+                assert (
+                    backbone_def[i - 1]["type"] == "Downsample"
+                ), "ResidualBlock must follow Downsample"
+
+                residual_blocks = []
+
+                for i in range(module_def["num_blocks"]):
+                    residual_blocks.append(ResidualBlock(module_def["channels"]))
+
+                residual_blocks = nn.Sequential(*residual_blocks)
+                backbone.append(residual_blocks)
+
+            if module_type == "Downsample":
+                assert (
+                    i == 0 or backbone_def[i - 1]["type"] == "ResidualBlock"
+                ), "Downsample must follow ResidualBlock"
+
+                backbone.append(
+                    Downsample(
+                        in_channels=module_def["in_channels"],
+                        out_channels=module_def["out_channels"],
+                    )
+                )
+
+        return MiniYOLOV3(
+            image_size=config["image_size"],
+            num_classes=config["num_classes"],
+            anchors=config["anchors"],
+            num_anchors_per_scale=config["num_anchors_per_scale"],
+            backbone=backbone,
+            num_decoders=config["num_decoders"],
+        )
+
+    def __init__(
+        self,
+        image_size: int,
+        num_classes: int,
+        anchors: Union[torch.Tensor, list[list[int]]],
+        num_anchors_per_scale: int,
+        backbone: list[nn.Module],
+        num_decoders: int,
+    ):
         super().__init__()
         self.image_size = image_size
         self.num_classes = num_classes
+
+        if isinstance(anchors, list):
+            anchors = torch.tensor(anchors, dtype=torch.float32)
 
         self.register_buffer("anchors", anchors)
 
