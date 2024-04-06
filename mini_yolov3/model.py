@@ -22,6 +22,28 @@ class Downsample(nn.Module):
         return self.downsample(x)
 
 
+class Upsample(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.upsample = nn.Sequential(
+            nn.ConvTranspose2d(
+                in_channels,
+                out_channels,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+                output_padding=1,
+            ),
+            nn.InstanceNorm2d(out_channels, affine=True),
+        )
+
+    def forward(self, x: torch.Tensor):
+        return self.upsample(x)
+
+
 class ResidualBlock(nn.Module):
     def __init__(self, channels: int):
         super().__init__()
