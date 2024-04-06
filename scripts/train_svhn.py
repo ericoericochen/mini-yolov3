@@ -9,6 +9,7 @@ from mini_yolov3.dataset import SVHNDataset
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_config", type=str, default="../configs/smol.json")
+    parser.add_argument("--image_size", type=int, default=32)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--num_epochs", type=int, default=10)
     parser.add_argument("--lr", type=float, default=3e-4)

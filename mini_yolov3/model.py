@@ -3,6 +3,8 @@ import torch
 from typing import Union
 import torch.nn.functional as F
 from .loss import YOLOLoss
+from dataclasses import dataclass
+from torchvision.ops import nms, box_convert
 
 
 class Downsample(nn.Module):
@@ -83,11 +85,15 @@ class DetectionLayer(nn.Module):
         return self.detection(x)
 
 
-class MiniYOLOV3(nn.Module):
+@dataclass
+class MiniYoloV3Output:
+    pred: torch.Tensor
+    bboxes: list[torch.Tensor]
+
+
+class MiniYoloV3(nn.Module):
     @staticmethod
     def from_config(config: dict):
-        print("[loading model from config...]")
-
         backbone = []
         backbone_def = config["backbone"]
 
@@ -125,7 +131,7 @@ class MiniYOLOV3(nn.Module):
                     )
                 )
 
-        return MiniYOLOV3(
+        return MiniYoloV3(
             image_size=config["image_size"],
             num_classes=config["num_classes"],
             anchors=config["anchors"],
@@ -221,8 +227,61 @@ class MiniYOLOV3(nn.Module):
         return loss
 
     @torch.no_grad()
-    def inference(self, images: torch.Tensor):
-        pass
+    def inference(
+        self,
+        images: torch.Tensor,
+        confidence_threshold: float = 0.9,
+        iou_threshold: float = 0.5,
+    ) -> MiniYoloV3Output:
+        """
+        Predict bounding boxes for input images
+
+        Params:
+            - images: (B, C, H, W) input images
+            - confidence_threshold: minimum confidence score to keep a bounding box
+            - iou_threshold: threshold for non-maximum suppression
+        """
+        pred = self(images)
+
+        # pred bbox are in cxcywh format
+        bbox_pred = convert_yolo_pred_to_bbox(pred, self.anchors, self.num_classes)
+        A = self.anchors.shape[0]
+
+        bounding_boxes = []
+        for bbox_data in bbox_pred:
+            bbox_data = bbox_data.view(-1, 5 + self.num_classes)
+            bbox = bbox_data[..., :4]
+            scores = bbox_data[..., 4]
+
+            # keep bboxes with confidence score >= confidence_threshold
+            keep_mask = scores >= confidence_threshold
+            bbox_data = bbox_data[keep_mask]
+            bbox = bbox[keep_mask]
+            scores = scores[keep_mask]
+
+            # convert bbox from cxcywh to xyxy
+            bbox_xyxy = box_convert(bbox, in_fmt="cxcywh", out_fmt="xyxy")
+
+            # non max suppression
+            nms_idx = nms(bbox_xyxy, scores, iou_threshold)
+
+            # bbox + confidence + labels + scores
+            selected_bbox_pred = bbox_data[nms_idx]
+            selected_bbox = selected_bbox_pred[:, :4]
+            confidence = selected_bbox_pred[:, 4]
+            class_probs = selected_bbox_pred[:, 5:]
+            labels = class_probs.argmax(dim=-1)
+            scores = class_probs.max(dim=-1).values
+
+            result = {
+                "bboxes": selected_bbox,
+                "confidence": confidence,
+                "labels": labels,
+                "scores": scores,
+            }
+            bounding_boxes.append(result)
+
+        return MiniYoloV3Output(pred=pred, bboxes=bounding_boxes)
 
     def forward(self, x: torch.Tensor):
         assert (
@@ -270,3 +329,57 @@ class MiniYOLOV3(nn.Module):
         x = x.permute(0, 2, 3, 1)  # (B, H, W, A(5 + C))
 
         return x
+
+
+def convert_yolo_pred_to_bbox(
+    pred: torch.Tensor, anchors: torch.Tensor, num_classes: int
+) -> torch.Tensor:
+    """
+    Converts model prediction to bounding box predictions by transforming t_x, t_y to x, y and t_w, t_h to w, h
+    and converting confidence scores and class scores to probabilities.
+
+    Params:
+        - pred: (B, H, W, A(C + 5)) in cxcywh format with confidence scores and class probabilities
+    """
+
+    B = pred.shape[0]
+    W, H = pred.shape[2], pred.shape[1]
+    A = anchors.shape[0]
+
+    pred = pred.view(-1, H, W, A, 5 + num_classes)  # (B, H, W, A, 5 + C)
+
+    pred_tx = pred[..., 0]  # (B, H, W, A)
+    pred_ty = pred[..., 1]  # (B, H, W, A)
+    pred_twh = pred[..., 2:4]  # (B, W, W, A, 2)
+    pred_confidence = pred[..., 4:5].sigmoid()  # (B, H, W, A, 1)
+    pred_class_scores = pred[..., 5:].softmax(dim=-1)  # (B, H, W, A, C)
+
+    # get c_x, c_y
+    X, Y = torch.arange(0, W, device=pred.device), torch.arange(H, device=pred.device)
+    x_indices, y_indices = torch.meshgrid(X, Y, indexing="xy")
+    x_offsets = x_indices.unsqueeze(0).unsqueeze(-1) * 1 / W
+    y_offsets = y_indices.unsqueeze(0).unsqueeze(-1) * 1 / H
+
+    # apply sigmoid to t_x and t_y and add offset
+    pred_x = pred_tx.sigmoid() * (1 / W) + x_offsets
+    pred_y = pred_ty.sigmoid() * (1 / H) + y_offsets
+
+    # apply exp to twh and multiply with anchors
+    anchors_batch = anchors.unsqueeze(0).unsqueeze(0).unsqueeze(0)
+    pred_wh = pred_twh.exp() * anchors_batch
+
+    # concatenate t_x, t_y, t_w, t_h, conf, and class scores
+    bbox_pred = torch.cat(
+        [
+            pred_x.unsqueeze(-1),
+            pred_y.unsqueeze(-1),
+            pred_wh,
+            pred_confidence,
+            pred_class_scores,
+        ],
+        dim=-1,
+    ).view(
+        B, H, W, -1
+    )  # (B, H, W, A(C + 5))
+
+    return bbox_pred

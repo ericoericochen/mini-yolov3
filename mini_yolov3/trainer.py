@@ -1,5 +1,5 @@
 import torch
-from .model import MiniYOLOV3
+from .model import MiniYoloV3
 from .dataset import ObjectDetectionDataset, collate_fn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -18,7 +18,7 @@ def get_device():
 class Trainer:
     def __init__(
         self,
-        model: MiniYOLOV3,
+        model: MiniYoloV3,
         train_dataset: ObjectDetectionDataset,
         val_dataset: ObjectDetectionDataset = None,
         lr: float = 3e-4,

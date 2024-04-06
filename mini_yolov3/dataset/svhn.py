@@ -1,6 +1,8 @@
 from .base import ObjectDetectionDataset, ObjectDetectionData
 from datasets import load_dataset
 
+from ..utils import to_tensor
+
 import torch
 from typing import Literal
 from PIL import Image
@@ -10,12 +12,12 @@ class SVHNDataset(ObjectDetectionDataset):
     def __init__(
         self,
         split: Literal["train", "test"] = "train",
-        image_transform=None,
+        image_size: int = 32,
         normalize_bbox: bool = True,
     ):
         super().__init__()
         self.split = split
-        self.image_transform = image_transform
+        self.image_size = image_size
         self.normalize_bbox = normalize_bbox
 
         self.dataset = load_dataset("svhn", "full_numbers", split=split)
@@ -35,21 +37,19 @@ class SVHNDataset(ObjectDetectionDataset):
         w, h = image.width, image.height
 
         # apply image transform to PIL image
-        if self.image_transform:
-            image = self.image_transform(image)
+        image = image.resize((self.image_size, self.image_size), Image.LANCZOS)
+        nw, nh = image.width, image.height
 
-        if isinstance(image, Image.Image):
-            nw, nh = image.width, image.height
-        elif isinstance(image, torch.Tensor):
-            nw, nh = image.shape[2], image.shape[1]
+        # convert image to tensor
+        image = to_tensor(image)
 
+        # scale bounding boxes
         w_factor = nw / w
         h_factor = nh / h
 
-        # scale bounding boxes
         bbox = torch.tensor(bbox, dtype=torch.float32)
-        bbox[:, [0, 2]] *= w_factor
-        bbox[:, [1, 3]] *= h_factor
+        bbox[:, [0, 2]] *= w_factor  # scale x and w
+        bbox[:, [1, 3]] *= h_factor  # scale y and h
 
         if self.normalize_bbox:
             bbox[:, [0, 2]] /= nw
