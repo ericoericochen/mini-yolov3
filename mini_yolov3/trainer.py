@@ -52,11 +52,46 @@ class Trainer:
         self.device = device
 
     def train(self):
-        criterion = torch.nn.MSELoss()
-
         model = self.model.to(self.device)
-        # model = torch.nn.Conv2d(3, 15, 2, 2).to(self.device)
-        # model = self.model.conv.to(self.device)
+        optimizer = torch.optim.Adam(
+            self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay
+        )
+        criterion = YOLOLoss(
+            num_classes=self.model.num_classes,
+            anchors=self.model.anchors,
+            lambda_coord=self.lambda_coord,
+            lambda_noobj=self.lambda_noobj,
+        )
+
+        losses = []
+        with tqdm(total=self.num_epochs) as pbar:
+            for epoch in range(self.num_epochs):
+                for data in self.train_loader:
+                    images, bboxes, labels = (
+                        data["images"],
+                        data["bboxes"],
+                        data["labels"],
+                    )
+
+                    images = images.to(self.device)
+                    bboxes = [bbox.to(self.device) for bbox in bboxes]
+                    labels = [label.to(self.device) for label in labels]
+
+                    # make pred and compute loss
+                    pred = self.model(images)
+                    loss_data = criterion(pred, bboxes, labels)
+                    loss = loss_data["loss"]
+                    losses.append(loss.item())
+
+                    # back prop
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+                    pbar.update(1)
+                    pbar.set_postfix(loss=loss.item())
+
+        return losses
 
         optimizer = torch.optim.Adam(
             model.parameters(), lr=self.lr, weight_decay=self.weight_decay
@@ -64,14 +99,13 @@ class Trainer:
 
         losses = []
         num_iters = self.num_epochs * len(self.train_loader)
+        images = torch.ones(1, 3, 32, 32).to(self.device)
         with tqdm(total=num_iters) as pbar:
             for epoch in range(self.num_epochs):
-                images = torch.ones(1, 3, 32, 32).to(self.device)
-                # images = torch.rand_like(images).to(self.device)
-
                 # make predictions
                 pred = model(images)
-                # pred = net(images).permute(0, 2, 3, 1)
+
+                # print(pred.shape)
                 target = torch.zeros_like(pred)
 
                 loss = criterion(pred, target)

@@ -12,10 +12,8 @@ def flatten_bboxes(
     """
     B = bboxes.shape[0]
 
-    bboxes = (
-        bboxes.permute(0, 2, 3, 1)
-        .view(B, -1, num_anchors, 5 + num_classes)
-        .view(B, -1, 5 + num_classes)
+    bboxes = bboxes.view(B, -1, num_anchors, 5 + num_classes).view(
+        B, -1, 5 + num_classes
     )  # (B, G, G, A(5 + C)) -> (B, G^2 * A, 5 + C) -> (B, AG^2, 5 + C)
 
     return bboxes
@@ -70,6 +68,9 @@ def non_maximum_suppression(bboxes: torch.Tensor, threshold: float = 0.5):
 
         obj_bboxes = remaining_bbox[ious.squeeze(0) < threshold]
 
+    if len(selected_bboxes) == 0:
+        return torch.empty(0, bboxes.shape[-1])
+
     nms_bboxes = torch.stack(selected_bboxes, dim=0)
 
     return nms_bboxes
@@ -82,15 +83,13 @@ def to_bbox(
     Converts model prediction to bounding box predictions by transforming t_x, t_y to x, y and t_w, t_h to w, h.
 
     Params:
-        - pred: (B, A(C + 5), H, W) in cxcywh format with confidence scores and class probabilities
+        - pred: (B, H, W, A(C + 5)) in cxcywh format with confidence scores and class probabilities
     """
 
-    W, H = pred.shape[3], pred.shape[2]
+    W, H = pred.shape[2], pred.shape[1]
     A = anchors.shape[0]
 
-    pred = pred.permute(0, 2, 3, 1).view(
-        -1, H, W, A, num_classes + 5
-    )  # (B, A(C + 5), H, W) -> (B, H, W, A(C + 5)) -> (B, H, W, A, 5 + C)
+    pred = pred.view(-1, H, W, A, 5 + num_classes)  # (B, H, W, A, 5 + C)
 
     pred_tx = pred[..., 0]  # (B, H, W, A)
     pred_ty = pred[..., 1]  # (B, H, W, A)
@@ -106,8 +105,6 @@ def to_bbox(
     # apply sigmoid to t_x and t_y and add offset
     pred_x = pred_tx.sigmoid() * (1 / W) + x_offsets
     pred_y = pred_ty.sigmoid() * (1 / H) + y_offsets
-    # pred_x = pred_tx.sigmoid() * (1 / W) + x_offsets
-    # pred_y = pred_ty.sigmoid() * (1 / H) + y_offsets
 
     # apply exp to twh and multiply with anchors
     anchors_batch = anchors.unsqueeze(0).unsqueeze(0).unsqueeze(0)
@@ -117,11 +114,11 @@ def to_bbox(
     pred = torch.cat(
         [pred_x.unsqueeze(-1), pred_y.unsqueeze(-1), pred_wh, pred_rest],
         dim=-1,
-    )
+    )  # (B, H, W, A(C + 5))
 
-    pred = pred.view(-1, H, W, A * (5 + num_classes)).permute(
-        0, 3, 1, 2
-    )  # (B, H, W, A(C + 5)) -> (B, A(C + 5), H, W)
+    # pred = pred.view(-1, H, W, A * (5 + num_classes)).permute(
+    #     0, 3, 1, 2
+    # )  # (B, H, W, A(C + 5)) -> (B, A(C + 5), H, W)
 
     return pred
 
@@ -150,7 +147,9 @@ class YoloV3Output:
             confidence = bbox[:, 4]
             class_scores = bbox[:, 5:]
 
+            # print("bbox:", bbox)
             xywh = box_convert(cxcywh, in_fmt="cxcywh", out_fmt="xywh")
+            # print("bbox: ", xywh)
             labels = torch.argmax(class_scores, dim=-1)
 
             box_data = {"bboxes": xywh, "confidence": confidence, "labels": labels}
