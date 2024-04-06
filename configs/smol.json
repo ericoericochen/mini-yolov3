@@ -30,5 +30,5 @@
   ],
   "anchors": [],
   "num_anchors_per_scale": 2,
-  "num_decoders": 1
+  "num_detection_layers": 1
 }

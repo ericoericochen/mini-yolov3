@@ -117,22 +117,31 @@ class MiniYOLOV3(nn.Module):
         anchors: Union[torch.Tensor, list[list[int]]],
         num_anchors_per_scale: int,
         backbone: list[nn.Module],
-        num_decoders: int,
+        num_detection_layers: int,
     ):
         super().__init__()
         self.image_size = image_size
         self.num_classes = num_classes
+        self.num_anchors_per_scale = num_anchors_per_scale
 
         if isinstance(anchors, list):
             anchors = torch.tensor(anchors, dtype=torch.float32)
+
+        assert (
+            anchors.dim() == 2 and anchors.shape[-1] == 2
+        ), "Anchors must be N x 2 tensor"
+
+        assert (
+            anchors.shape[0] == num_detection_layers * num_anchors_per_scale
+        ), "Number of anchors MUST match num_detection_layers x num_anchors_per_scale"
 
         self.register_buffer("anchors", anchors)
 
         self.backbone = nn.ModuleList(backbone)
         # self.upsample = pass
-        self.decoders = nn.ModuleList()
+        self.detection_layers = nn.ModuleList([])
 
-        for i in range(num_decoders):
+        for i in range(num_detection_layers):
             pass
 
     def forward(self, x: torch.Tensor):
