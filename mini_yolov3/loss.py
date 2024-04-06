@@ -21,6 +21,7 @@ class YOLOLoss(nn.Module):
         self.lambda_noobj = lambda_noobj
         self.mse_loss = nn.MSELoss()
         self.bce_loss = nn.BCEWithLogitsLoss()
+        self.cross_entropy = nn.CrossEntropyLoss()
 
     def forward(
         self,
@@ -121,13 +122,18 @@ class YOLOLoss(nn.Module):
         obj_pred_class = obj_pred[..., 5:]  # (O, C)
         obj_target_class = obj_target[..., 5:]  # (O, C)
 
-        class_loss = self.bce_loss(obj_pred_class, obj_target_class)
+        class_loss = self.cross_entropy(obj_pred_class, obj_target_class)
+        # class_loss = self.bce_loss(obj_pred_class, obj_target_class)
         # == class loss ==
 
         # == noobj conf loss
         # noobj mask
         noobj_mask = ~obj_mask
         noobj_pred_conf = pred[noobj_mask][:, 4]
+
+        # print(noobj_pred_conf.shape)
+
+        # raise RuntimeError
         noobj_target_conf = torch.zeros_like(noobj_pred_conf, device=pred.device)
         noobj_loss = self.lambda_noobj * self.bce_loss(
             noobj_pred_conf, noobj_target_conf
@@ -136,13 +142,15 @@ class YOLOLoss(nn.Module):
         # == noobj conf loss
         loss = coord_loss + obj_conf_loss + class_loss + noobj_loss
 
-        return {
-            "loss": loss,
-            "coord_loss": coord_loss,
-            "obj_conf_loss": obj_conf_loss,
-            "class_loss": class_loss,
-            "noobj_loss": noobj_loss,
-        }
+        return (
+            loss,
+            {
+                "coord_loss": coord_loss,
+                "obj_conf_loss": obj_conf_loss,
+                "class_loss": class_loss,
+                "noobj_loss": noobj_loss,
+            },
+        )
 
 
 def build_targets(

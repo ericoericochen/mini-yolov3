@@ -7,7 +7,7 @@ from typing import Union
 def draw_bounding_boxes(
     image: Image.Image,
     bboxes: torch.Tensor,
-    labels: Union[torch.Tensor, list[str]],
+    labels: Union[torch.Tensor, list[str]] = None,
 ):
     """
     Draw bounding boxes on an image with labels

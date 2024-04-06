@@ -58,12 +58,6 @@ class Trainer:
         optimizer = torch.optim.Adam(
             model.parameters(), lr=self.lr, weight_decay=self.weight_decay
         )
-        criterion = YOLOLoss(
-            num_classes=self.model.num_classes,
-            anchors=self.model.anchors,
-            lambda_coord=self.lambda_coord,
-            lambda_noobj=self.lambda_noobj,
-        )
 
         losses = []
         with tqdm(total=self.num_epochs) as pbar:
@@ -80,9 +74,14 @@ class Trainer:
                     labels = [label.to(self.device) for label in labels]
 
                     # make pred and compute loss
-                    pred = model(images)
-                    loss_data = criterion(pred, bboxes, labels)
-                    loss = loss_data["loss"]
+                    loss, loss_breakdown = model.get_yolo_loss(
+                        images=images,
+                        bboxes=bboxes,
+                        labels=labels,
+                        lambda_coord=self.lambda_coord,
+                        lambda_noobj=self.lambda_noobj,
+                    )
+
                     losses.append(loss.item())
 
                     # back prop
@@ -91,6 +90,9 @@ class Trainer:
                     optimizer.step()
 
                     pbar.update(1)
-                    pbar.set_postfix(loss=loss.item())
+                    pbar.set_postfix(
+                        loss=loss.item(),
+                        **{k: v.item() for k, v in loss_breakdown.items()}
+                    )
 
         return losses

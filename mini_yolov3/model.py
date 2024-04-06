@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch
 from typing import Union
 import torch.nn.functional as F
+from .loss import YOLOLoss
 
 
 class Downsample(nn.Module):
@@ -200,12 +201,33 @@ class MiniYOLOV3(nn.Module):
 
         return detection_layers
 
+    def get_yolo_loss(
+        self,
+        images: torch.Tensor,
+        bboxes: list[torch.Tensor],
+        labels: list[torch.Tensor],
+        lambda_coord: float = 5.0,
+        lambda_noobj: float = 0.5,
+    ):
+        criterion = YOLOLoss(
+            num_classes=self.num_classes,
+            anchors=self.anchors,
+            lambda_coord=lambda_coord,
+            lambda_noobj=lambda_noobj,
+        )
+        pred = self(images)
+        loss = criterion(pred, bboxes, labels)
+
+        return loss
+
+    @torch.no_grad()
+    def inference(self, images: torch.Tensor):
+        pass
+
     def forward(self, x: torch.Tensor):
         assert (
             x.shape[-1] == x.shape[-2] == self.image_size
         ), f"Input image size mismatch, expected: {self.image_size}x{self.image_size}"
-
-        print("forward")
 
         # backbone layer
         downsample_results = []  # save downsample results for skip connections
@@ -244,6 +266,7 @@ class MiniYOLOV3(nn.Module):
             detect = F.interpolate(detect, scale_factor=scale_factor, mode="bilinear")
             results.append(detect)
 
-        x = torch.cat(results, dim=1)
+        x = torch.cat(results, dim=1)  # (B, A(5 + C), H, W)
+        x = x.permute(0, 2, 3, 1)  # (B, H, W, A(5 + C))
 
         return x

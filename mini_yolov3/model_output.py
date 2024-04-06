@@ -37,7 +37,7 @@ def non_maximum_suppression(bboxes: torch.Tensor, threshold: float = 0.5):
         - bboxes: (AHW, 5 + C)
     """
     # select bboxes with confidence score >= threshold
-    obj_mask = bboxes[..., 4] >= threshold
+    obj_mask = bboxes[..., 4].sigmoid() >= threshold
     obj_bboxes = bboxes[obj_mask]
 
     selected_bboxes = []
@@ -116,10 +116,6 @@ def to_bbox(
         dim=-1,
     )  # (B, H, W, A(C + 5))
 
-    # pred = pred.view(-1, H, W, A * (5 + num_classes)).permute(
-    #     0, 3, 1, 2
-    # )  # (B, H, W, A(C + 5)) -> (B, A(C + 5), H, W)
-
     return pred
 
 
@@ -129,12 +125,16 @@ class YoloV3Output:
     anchors: torch.Tensor
     num_classes: int
 
+    def __post_init__(self):
+        self.pred = self.pred.detach()
+
     @property
     def bbox_pred(self) -> torch.Tensor:
         return to_bbox(self.pred, self.anchors, self.num_classes)
 
     def bounding_boxes(self, threshold: float = 0.5) -> torch.Tensor:
         bboxes = to_bbox(self.pred, self.anchors, self.num_classes)
+
         bboxes = flatten_bboxes(
             bboxes, num_anchors=self.anchors.shape[0], num_classes=self.num_classes
         )
