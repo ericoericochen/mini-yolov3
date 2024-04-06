@@ -10,6 +10,9 @@ class Downsample(nn.Module):
 
     def __init__(self, in_channels: int, out_channels: int):
         super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
         self.downsample = nn.Conv2d(
             in_channels, out_channels, kernel_size=3, stride=2, padding=1
         )
@@ -39,12 +42,20 @@ class ResidualBlock(nn.Module):
         return x
 
 
+class Decoder(nn.Module):
+    def __init__(self, in_channels: int, num_anchors: int, num_classes: int):
+        super().__init__()
+
+    def forward(self, x: torch.Tensor):
+        pass
+
+
 class MiniYOLOV3(nn.Module):
     @staticmethod
     def from_config(config: dict):
         print("[loading model from config...]")
 
-        backbone = nn.ModuleList([])
+        backbone = []
         backbone_def = config["backbone"]
 
         for i, module_def in enumerate(backbone_def):
@@ -52,6 +63,9 @@ class MiniYOLOV3(nn.Module):
 
             if i == 0:
                 assert module_type == "Downsample", "First module must be Downsample"
+
+            if i == len(backbone_def) - 1:
+                assert module_type == "Downsample", "Last module must be Downsample"
 
             if module_type == "ResidualBlock":
                 assert (
@@ -105,11 +119,12 @@ class MiniYOLOV3(nn.Module):
 
         self.register_buffer("anchors", anchors)
 
-        self.conv = nn.Sequential(
-            nn.Conv2d(3, 15, 16, 16),
-            # nn.Conv2d(3, 32, 3, 2),
-            # nn.Conv2d(3, 32, 2, 2),
-        )
+        self.backbone = nn.ModuleList(backbone)
+        # self.upsample = pass
+        self.decoders = nn.ModuleList()
+
+        for i in range(num_decoders):
+            pass
 
     def forward(self, x: torch.Tensor):
         x = self.conv(x)
@@ -126,35 +141,3 @@ if __name__ == "__main__":
     x = residual(x)
 
     print(x.shape)
-
-
-# class MiniYOLOV3(nn.Module):
-#     def __init__(self, image_size: int, num_classes: int, anchors: torch.Tensor):
-#         super().__init__()
-#         self.image_size = image_size
-#         self.num_classes = num_classes
-#         # self.anchors = anchors
-
-#         self.register_buffer("anchors", anchors)
-
-#         A = anchors.shape[0]
-#         self.conv = nn.Sequential(
-#             nn.Conv2d(3, 32, self.image_size // 2, self.image_size // 2, 0),
-#             # nn.ReLU(),
-#             # nn.LayerNorm(16),
-#             # nn.Conv2d(32, 32, 3, 2, 1),
-#             # nn.ReLU(),
-#             # nn.Conv2d(32, A * (5 + num_classes), 1, 1),
-#             # nn.ReLU(),
-#             # nn.Conv2d(A * (5 + num_classes), A * (5 + num_classes), 1, 1),
-#         )
-
-#     def forward(self, x: torch.Tensor):
-#         # assert (
-#         #     x.shape[2] == x.shape[3] == self.image_size
-#         # ), f"Invalid image size, height and width should equal {self.image_size}"
-
-#         x = self.conv(x)
-#         x = x.permute(0, 2, 3, 1)
-
-#         return x
