@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch
 from typing import Union
+import torch.nn.functional as F
 
 
 class Downsample(nn.Module):
@@ -178,8 +179,8 @@ class MiniYOLOV3(nn.Module):
 
         for i in range(self.num_detection_layers - 1):
             down_idx -= 2
-            in_channels = channels - self.backbone[down_idx].out_channels
-            upsample_layers.append(Upsample(in_channels, channels))
+            out_channels = channels - self.backbone[down_idx].out_channels
+            upsample_layers.append(Upsample(channels, out_channels))
 
         return upsample_layers
 
@@ -200,17 +201,49 @@ class MiniYOLOV3(nn.Module):
         return detection_layers
 
     def forward(self, x: torch.Tensor):
-        x = self.conv(x)
-        x = x.permute(0, 2, 3, 1)
+        assert (
+            x.shape[-1] == x.shape[-2] == self.image_size
+        ), f"Input image size mismatch, expected: {self.image_size}x{self.image_size}"
+
+        print("forward")
+
+        # backbone layer
+        downsample_results = []  # save downsample results for skip connections
+        for module in self.backbone:
+            x = module(x)
+
+            if isinstance(module, Downsample):
+                downsample_results.append(x)
+
+        # detection layers
+        detect_results = []
+        for i in range(self.num_detection_layers):
+            detection_layer = self.detection_layers[i]
+
+            if i == 0:
+                detect = detection_layer(downsample_results.pop())
+                detect_results.append(detect)
+            else:
+                # upsample
+                upsample = self.upsample_layers[i - 1]
+                x = upsample(x)
+
+                # concat with result from skip connection
+                skip = downsample_results.pop()
+                x = torch.cat([x, skip], dim=1)
+
+                detect = detection_layer(x)
+                detect_results.append(detect)
+
+        # upscale detection results to same shape and concat
+        results = []
+
+        for i, detect in enumerate(detect_results):
+            exp_factor = len(detect_results) - 1 - i
+            scale_factor = 2**exp_factor
+            detect = F.interpolate(detect, scale_factor=scale_factor, mode="bilinear")
+            results.append(detect)
+
+        x = torch.cat(results, dim=1)
 
         return x
-
-
-if __name__ == "__main__":
-    residual = ResidualBlock(64)
-
-    x = torch.randn(1, 64, 32, 32)
-
-    x = residual(x)
-
-    print(x.shape)
