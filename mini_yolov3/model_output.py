@@ -19,16 +19,20 @@ def flatten_bboxes(
     return bboxes
 
 
-def non_maximum_suppression_batch(bboxes: torch.Tensor, threshold: float = 0.5):
+def non_maximum_suppression_batch(
+    bboxes: torch.Tensor, min_confidence: float = 0.5, threshold: float = 0.5
+):
     results = []
 
     for bbox in bboxes:
-        results.append(non_maximum_suppression(bbox, threshold))
+        results.append(non_maximum_suppression(bbox, min_confidence, threshold))
 
     return results
 
 
-def non_maximum_suppression(bboxes: torch.Tensor, threshold: float = 0.5):
+def non_maximum_suppression(
+    bboxes: torch.Tensor, min_confidence: float = 0.5, threshold: float = 0.5
+):
     """
     Performs non-maximum suppression on the bounding boxes. Bounding boxes must
     be in cxcywh format with confidence scores and class scores.
@@ -37,7 +41,7 @@ def non_maximum_suppression(bboxes: torch.Tensor, threshold: float = 0.5):
         - bboxes: (AHW, 5 + C)
     """
     # select bboxes with confidence score >= threshold
-    obj_mask = bboxes[..., 4].sigmoid() >= threshold
+    obj_mask = bboxes[..., 4].sigmoid() >= min_confidence
     obj_bboxes = bboxes[obj_mask]
 
     selected_bboxes = []
@@ -49,8 +53,7 @@ def non_maximum_suppression(bboxes: torch.Tensor, threshold: float = 0.5):
         selected_bboxes.append(max_bbox)
 
         # calculate ious and remove bboxes that have iou >= threshold
-        remaining_mask = ~F.one_hot(max_idx, obj_bboxes.shape[0]).bool()
-        remaining_bbox = obj_bboxes[remaining_mask]
+        remaining_bbox = obj_bboxes
 
         max_bbox = max_bbox.unsqueeze(0)
         ious = box_iou(
@@ -132,14 +135,18 @@ class YoloV3Output:
     def bbox_pred(self) -> torch.Tensor:
         return to_bbox(self.pred, self.anchors, self.num_classes)
 
-    def bounding_boxes(self, threshold: float = 0.5) -> torch.Tensor:
+    def bounding_boxes(
+        self, min_confidence: float = 0.5, threshold: float = 0.5
+    ) -> torch.Tensor:
         bboxes = to_bbox(self.pred, self.anchors, self.num_classes)
 
         bboxes = flatten_bboxes(
             bboxes, num_anchors=self.anchors.shape[0], num_classes=self.num_classes
         )
 
-        selected_bboxes = non_maximum_suppression_batch(bboxes, threshold)
+        selected_bboxes = non_maximum_suppression_batch(
+            bboxes, min_confidence, threshold
+        )
         boxes = []  # (cx, cy, w, h, confidence, class_scores)
 
         for bbox in selected_bboxes:
@@ -151,8 +158,14 @@ class YoloV3Output:
             xywh = box_convert(cxcywh, in_fmt="cxcywh", out_fmt="xywh")
             # print("bbox: ", xywh)
             labels = torch.argmax(class_scores, dim=-1)
+            scores = torch.softmax(class_scores, dim=-1).max(dim=-1).values
 
-            box_data = {"bboxes": xywh, "confidence": confidence, "labels": labels}
+            box_data = {
+                "bboxes": xywh,
+                "confidence": confidence,
+                "labels": labels,
+                "scores": scores,
+            }
             boxes.append(box_data)
 
         return boxes
