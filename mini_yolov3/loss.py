@@ -1,6 +1,5 @@
 import torch
 
-# from .utils import box_iou
 import torch.nn as nn
 import torch.nn.functional as F
 from .model_output import to_bbox

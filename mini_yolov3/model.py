@@ -2,7 +2,31 @@ import torch.nn as nn
 import torch
 
 
+class ResidualBlock(nn.Module):
+    def __init__(self, channels: int):
+        super().__init__()
+        self.channels = channels
+        mid_channels = channels // 2
+
+        self.conv = nn.Sequential(
+            nn.Conv2d(channels, mid_channels, kernel_size=1, stride=1),
+            nn.InstanceNorm2d(mid_channels, affine=True),
+            nn.LeakyReLU(),
+            nn.Conv2d(mid_channels, channels, kernel_size=3, stride=1, padding=1),
+            nn.InstanceNorm2d(channels, affine=True),
+        )
+
+    def forward(self, x: torch.Tensor):
+        h = self.conv(x)
+        x = x + h  # residual connection
+
+        return x
+
+
 class MiniYOLOV3(nn.Module):
+    def from_config(config: dict):
+        pass
+
     def __init__(self, image_size: int, num_classes: int, anchors: torch.Tensor):
         super().__init__()
         self.image_size = image_size
@@ -21,6 +45,16 @@ class MiniYOLOV3(nn.Module):
         x = x.permute(0, 2, 3, 1)
 
         return x
+
+
+if __name__ == "__main__":
+    residual = ResidualBlock(64)
+
+    x = torch.randn(1, 64, 32, 32)
+
+    x = residual(x)
+
+    print(x.shape)
 
 
 # class MiniYOLOV3(nn.Module):
