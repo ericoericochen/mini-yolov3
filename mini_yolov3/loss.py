@@ -5,61 +5,6 @@ import torch.nn.functional as F
 from torchvision.ops import box_convert, box_iou
 
 
-# TODO: refactor later minor changes
-def convert_yolo_pred_to_bbox(
-    pred: torch.Tensor, anchors: torch.Tensor, num_classes: int
-) -> torch.Tensor:
-    """
-    Converts model prediction to bounding box predictions by transforming t_x, t_y to x, y and t_w, t_h to w, h
-    and converting confidence scores and class scores to probabilities.
-
-    Params:
-        - pred: (B, H, W, A(C + 5)) in cxcywh format with confidence scores and class probabilities
-    """
-
-    B = pred.shape[0]
-    W, H = pred.shape[2], pred.shape[1]
-    A = anchors.shape[0]
-
-    pred = pred.view(-1, H, W, A, 5 + num_classes)  # (B, H, W, A, 5 + C)
-
-    pred_tx = pred[..., 0]  # (B, H, W, A)
-    pred_ty = pred[..., 1]  # (B, H, W, A)
-    pred_twh = pred[..., 2:4]  # (B, W, W, A, 2)
-    pred_confidence = pred[..., 4:5]  # (B, H, W, A, 1)
-    pred_class_scores = pred[..., 5:]  # (B, H, W, A, C)
-
-    # get c_x, c_y
-    X, Y = torch.arange(0, W, device=pred.device), torch.arange(H, device=pred.device)
-    x_indices, y_indices = torch.meshgrid(X, Y, indexing="xy")
-    x_offsets = x_indices.unsqueeze(0).unsqueeze(-1) * 1 / W
-    y_offsets = y_indices.unsqueeze(0).unsqueeze(-1) * 1 / H
-
-    # apply sigmoid to t_x and t_y and add offset
-    pred_x = pred_tx.sigmoid() * (1 / W) + x_offsets
-    pred_y = pred_ty.sigmoid() * (1 / H) + y_offsets
-
-    # apply exp to twh and multiply with anchors
-    anchors_batch = anchors.unsqueeze(0).unsqueeze(0).unsqueeze(0)
-    pred_wh = pred_twh.exp() * anchors_batch
-
-    # concatenate t_x, t_y, t_w, t_h, conf, and class scores
-    bbox_pred = torch.cat(
-        [
-            pred_x.unsqueeze(-1),
-            pred_y.unsqueeze(-1),
-            pred_wh,
-            pred_confidence,
-            pred_class_scores,
-        ],
-        dim=-1,
-    ).view(
-        B, H, W, -1
-    )  # (B, H, W, A(C + 5))
-
-    return bbox_pred
-
-
 class YOLOLoss(nn.Module):
     def __init__(
         self,
@@ -99,22 +44,11 @@ class YOLOLoss(nn.Module):
             num_classes=self.num_classes,
         )  # (B, H, W, A(5 + C))
 
-        # make global bbox pred and target
-        bbox_pred = convert_yolo_pred_to_bbox(
-            pred, anchors=self.anchors, num_classes=self.num_classes
-        )
-        bbox_target = convert_yolo_pred_to_bbox(
-            target, anchors=self.anchors, num_classes=self.num_classes
-        )
-
-        bbox_pred = bbox_pred.view(-1, 5 + self.num_classes)
-        bbox_target = bbox_target.view(-1, 5 + self.num_classes)
-
         pred = pred.contiguous().view(-1, 5 + self.num_classes)
         target = target.view(-1, 5 + self.num_classes)
 
         # get mask for cells that contain an object
-        obj_mask = bbox_target[..., 4] == 1  # (B, H, W)
+        obj_mask = target[..., 4] == 1  # (B, H, W)
 
         # get obj pred and target
         obj_pred = pred[obj_mask]
@@ -217,17 +151,9 @@ def build_targets(
         sum_twh = twh.abs().sum(dim=-1)
         min_twh_idx = sum_twh.argmin(dim=-1)
 
-        # print(sum_twh)
-        # print(min_twh_idx)
-
         # construct confidence scores
-        # confidence = torch.ones(N, A, 1).to(bbox.device)
-        # print(confidence.shape)
         confidence = torch.zeros(N, A, 1).to(bbox.device)
         confidence[:, min_twh_idx] = 1
-        # print(confidence)
-
-        # raise RuntimeError
 
         # construct one hot vectors for class labels
         class_labels = F.one_hot(label.long(), num_classes).float()  # (N, C)
