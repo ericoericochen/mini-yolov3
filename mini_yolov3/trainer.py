@@ -127,7 +127,7 @@ class Trainer:
                         model, self.val_loader, device=self.device
                     )
 
-                    val_loss.append(val_loss)
+                    val_losses.append(val_loss)
 
                     tqdm.write(
                         f"[Epoch {epoch}] Train Loss: {epoch_loss} | Val Loss: {val_loss}"

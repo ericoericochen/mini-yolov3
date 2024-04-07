@@ -171,7 +171,7 @@ def build_targets(
         try:
             target[i, cell_ij[:, 1], cell_ij[:, 0], :] = target_value  # (N, A(5 + C))
         except:
-            print(cell_ij)
-            pdb.set_trace()
+            # invalid bounding box DO NOT COUNT
+            target[i] = -100  # ignore index
 
     return target
