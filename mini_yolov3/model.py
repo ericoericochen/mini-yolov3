@@ -210,25 +210,6 @@ class MiniYoloV3(nn.Module):
             "num_detection_layers": self.num_detection_layers,
         }
 
-    def get_yolo_loss(
-        self,
-        images: torch.Tensor,
-        bboxes: list[torch.Tensor],
-        labels: list[torch.Tensor],
-        lambda_coord: float = 5.0,
-        lambda_noobj: float = 0.5,
-    ):
-        criterion = YOLOLoss(
-            num_classes=self.num_classes,
-            anchors=self.anchors,
-            lambda_coord=lambda_coord,
-            lambda_noobj=lambda_noobj,
-        )
-        pred = self(images)
-        loss = criterion(pred, bboxes, labels)
-
-        return loss
-
     @torch.no_grad()
     def inference(
         self,

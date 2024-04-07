@@ -8,6 +8,9 @@ import os
 import json
 import pprint
 import matplotlib.pyplot as plt
+from .loss import YOLOLoss
+from .utils import draw_bounding_boxes
+from torchvision.ops import box_convert
 
 
 def get_device():
@@ -24,8 +27,9 @@ class Trainer:
         weight_decay: float = 0.0,
         batch_size: int = 32,
         num_epochs: int = 10,
-        lambda_coord: float = 1.0,
-        lambda_noobj: float = 1.0,
+        lambda_coord: float = 0.05,
+        lambda_conf: float = 1.0,
+        lambda_cls: float = 0.5,
         save_dir: str = "./yolo_checkpoints",
         checkpoint_epoch: int = 1,
         eval_every: int = 1,
@@ -48,19 +52,60 @@ class Trainer:
         self.weight_decay = weight_decay
         self.num_epochs = num_epochs
         self.lambda_coord = lambda_coord
-        self.lambda_noobj = lambda_noobj
+        self.lambda_conf = lambda_conf
+        self.lambda_cls = lambda_cls
         self.save_dir = save_dir
         self.checkpoint_epoch = checkpoint_epoch
         self.eval_every = eval_every
         self.device = device
 
+    def record_object_detection_results(self, results_dir: str, epoch: int):
+        self.model.eval()
+
+        train_save_path = os.path.join(results_dir, f"train_{epoch}.png")
+        train_image = self.train_dataset[0]["image"].unsqueeze(0).to(self.device)
+        bounding_boxes = self.model.inference(train_image).bboxes
+        train_bbox = draw_bounding_boxes(
+            train_image[0].cpu(),
+            box_convert(
+                bounding_boxes[0]["bboxes"],
+                in_fmt="cxcywh",
+                out_fmt="xyxy",
+            ),
+            bounding_boxes[0]["labels"],
+        )
+
+        plt.clf()
+        plt.imshow(train_bbox)
+        plt.savefig(train_save_path)
+
+        if self.val_dataset:
+            val_save_path = os.path.join(results_dir, f"val_{epoch}.png")
+            val_image = self.val_dataset[0]["image"].unsqueeze(0).to(self.device)
+            bounding_boxes = self.model.inference(val_image).bboxes
+            val_bbox = draw_bounding_boxes(
+                val_image[0].cpu(),
+                box_convert(
+                    bounding_boxes[0]["bboxes"],
+                    in_fmt="cxcywh",
+                    out_fmt="xyxy",
+                ),
+                bounding_boxes[0]["labels"],
+            )
+
+            plt.clf()
+            plt.imshow(val_bbox)
+            plt.savefig(val_save_path)
+
+        raise RuntimeError
+
     def train(self):
         # make save dir
         os.makedirs(self.save_dir, exist_ok=True)
         checkpoints_dir = os.path.join(self.save_dir, "checkpoints")
-        evals_dir = os.path.join(self.save_dir, "evals")
+        results_dir = os.path.join(self.save_dir, "results")
         os.makedirs(checkpoints_dir, exist_ok=True)
-        os.makedirs(evals_dir, exist_ok=True)
+        os.makedirs(results_dir, exist_ok=True)
 
         loss_plot_path = os.path.join(self.save_dir, "loss.png")
 
@@ -80,6 +125,13 @@ class Trainer:
         losses = []
         val_losses = []
         has_val = self.val_dataset is not None
+        criterion = YOLOLoss(
+            num_classes=self.model.num_classes,
+            anchors=self.model.anchors,
+            lambda_coord=self.lambda_coord,
+            lambda_conf=self.lambda_conf,
+            lambda_cls=self.lambda_cls,
+        )
 
         pp = pprint.PrettyPrinter()
         num_iters = len(self.train_loader) * self.num_epochs
@@ -90,6 +142,7 @@ class Trainer:
 
                 model.train()
                 for data in self.train_loader:
+                    # move batch to device
                     images, bboxes, labels = (
                         data["images"],
                         data["bboxes"],
@@ -101,13 +154,8 @@ class Trainer:
                     labels = [label.to(self.device) for label in labels]
 
                     # make pred and compute loss
-                    loss, loss_breakdown = model.get_yolo_loss(
-                        images=images,
-                        bboxes=bboxes,
-                        labels=labels,
-                        lambda_coord=self.lambda_coord,
-                        lambda_noobj=self.lambda_noobj,
-                    )
+                    pred = model(images)
+                    loss, loss_breakdown = criterion(pred, bboxes, labels)
 
                     epoch_loss += loss.item()
 
@@ -137,6 +185,7 @@ class Trainer:
                 #     tqdm.write(f"[Epoch {epoch}] Loss: {epoch_loss}")
 
                 # visualize object detection results on train and val
+                self.record_object_detection_results(results_dir, epoch)
 
                 # save loss plot
                 plt.clf()

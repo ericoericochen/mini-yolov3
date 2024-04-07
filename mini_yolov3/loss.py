@@ -10,17 +10,19 @@ class YOLOLoss(nn.Module):
         self,
         num_classes: int,
         anchors: torch.Tensor,
-        lambda_coord: float = 1.0,
-        lambda_noobj: float = 1.0,
+        lambda_coord: float = 0.05,
+        lambda_conf: float = 1.0,
+        lambda_cls: float = 0.5,
     ):
         super().__init__()
         self.num_classes = num_classes
         self.anchors = anchors
         self.lambda_coord = lambda_coord
-        self.lambda_noobj = lambda_noobj
+        self.lambda_conf = lambda_conf
+        self.lambda_cls = lambda_cls
+
         self.mse_loss = nn.MSELoss()
         self.bce_loss = nn.BCEWithLogitsLoss()
-        self.cross_entropy = nn.CrossEntropyLoss()
 
     def forward(
         self,
@@ -66,29 +68,20 @@ class YOLOLoss(nn.Module):
 
         conf_loss = self.bce_loss(pred_conf, target_conf)
 
-        # obj_pred_conf = obj_pred[..., 4]  # (O, )
-        # target_pred_conf = torch.ones_like(obj_pred_conf, device=pred.device)
-
-        # obj_conf_loss = self.bce_loss(obj_pred_conf, target_pred_conf)
-
         # class loss
         obj_pred_class = obj_pred[..., 5:]  # (O, C)
         obj_target_class = obj_target[..., 5:]  # (O, C)
 
-        class_loss = self.cross_entropy(obj_pred_class, obj_target_class)
-
-        # noobj conf loss
-        # noobj_mask = ~obj_mask
-        # noobj_pred_conf = pred[noobj_mask][:, 4]
-        # noobj_target_conf = torch.zeros_like(noobj_pred_conf, device=pred.device)
-
-        # noobj_loss = self.lambda_noobj * self.bce_loss(
-        #     noobj_pred_conf, noobj_target_conf
-        # )
+        # class_loss = self.cross_entropy(obj_pred_class, obj_target_class)
+        class_loss = self.bce_loss(obj_pred_class, obj_target_class)
 
         # total loss
-        # loss = coord_loss + obj_conf_loss + noobj_loss + class_loss
-        loss = coord_loss + conf_loss + class_loss
+        loss = (
+            self.lambda_coord * coord_loss
+            + self.lambda_conf * conf_loss
+            + self.lambda_cls * class_loss
+        )
+        # loss = coord_loss + conf_loss + class_loss
 
         return (
             loss,
@@ -98,15 +91,6 @@ class YOLOLoss(nn.Module):
                 "class_loss": class_loss,
             },
         )
-        # return (
-        #     loss,
-        #     {
-        #         "coord_loss": coord_loss,
-        #         "obj_conf_loss": obj_conf_loss,
-        #         "class_loss": class_loss,
-        #         "noobj_loss": noobj_loss,
-        #     },
-        # )
 
 
 def build_targets(
@@ -166,10 +150,6 @@ def build_targets(
         # construct confidence scores
         confidence = torch.zeros(N, A, 1, device=bbox.device)
         confidence[:, min_twh_idx] = 1
-
-        # print(confidence)
-
-        # raise RuntimeError
 
         # construct one hot vectors for class labels
         class_labels = torch.zeros(N, A, num_classes, device=bbox.device)  # (N, A, C)
