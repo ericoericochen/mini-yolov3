@@ -11,11 +11,7 @@ import matplotlib.pyplot as plt
 
 
 def get_device():
-    return (
-        "cuda"
-        if torch.cuda.is_available()
-        else "mps" if torch.backends.mps.is_available() else "cpu"
-    )
+    return "cuda" if torch.cuda.is_available() else "cpu"
 
 
 class Trainer:
@@ -81,9 +77,8 @@ class Trainer:
 
         losses = []
         val_losses = []
-        has_val = self.val_loader is not None
+        has_val = self.val_dataset is not None
 
-        model.train()
         pp = pprint.PrettyPrinter()
         num_iters = len(self.train_loader) * self.num_epochs
 
@@ -91,6 +86,7 @@ class Trainer:
             for epoch in range(self.num_epochs):
                 epoch_loss = 0
 
+                model.train()
                 for data in self.train_loader:
                     images, bboxes, labels = (
                         data["images"],
@@ -127,18 +123,18 @@ class Trainer:
                 epoch_loss /= len(self.train_loader)
                 losses.append(epoch_loss)
 
-                if has_val:
-                    val_loss = calculate_loss(
-                        model, self.val_loader, device=self.device
-                    )
+                # if has_val:
+                #     val_loss = calculate_loss(
+                #         model, self.val_loader, device=self.device
+                #     )
 
-                    val_losses.append(val_loss)
+                #     val_losses.append(val_loss)
 
-                    tqdm.write(
-                        f"[Epoch {epoch}] Train Loss: {epoch_loss} | Val Loss: {val_loss}"
-                    )
-                else:
-                    tqdm.write(f"[Epoch {epoch}] Loss: {epoch_loss}")
+                #     tqdm.write(
+                #         f"[Epoch {epoch}] Train Loss: {epoch_loss} | Val Loss: {val_loss}"
+                #     )
+                # else:
+                #     tqdm.write(f"[Epoch {epoch}] Loss: {epoch_loss}")
 
                 # save loss plot
                 plt.clf()
