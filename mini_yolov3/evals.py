@@ -2,15 +2,45 @@ from .model import MiniYoloV3
 from torch.utils.data import DataLoader
 from torchmetrics.detection import MeanAveragePrecision
 from torchvision.ops import box_convert
+import torch
+from tqdm import tqdm
+
+
+def serialize_mAP(mAP: dict):
+    def serialize_metric(value: torch.Tensor):
+        try:
+            return value.item()
+        except:
+            return value.tolist()
+
+    return {key: serialize_metric(value) for key, value in mAP.items()}
+
+
+def calculate_loss(model: MiniYoloV3, dataloader: DataLoader, device: str = "cpu"):
+    model.eval()
+    total_loss = 0
+    for batch in tqdm(dataloader):
+        images, bboxes, labels = (
+            batch["images"],
+            batch["bboxes"],
+            batch["labels"],
+        )
+
+        images = images.to(device)
+        bboxes = [bbox.to(device) for bbox in bboxes]
+        labels = [label.to(device) for label in labels]
+
+        loss, _ = model.get_yolo_loss(images, bboxes, labels)
+        total_loss += loss.item()
+
+    return total_loss / len(dataloader)
 
 
 def calculate_mAP(model: MiniYoloV3, dataloader: DataLoader, device: str = "cpu"):
     metric = MeanAveragePrecision(box_format="cxcywh", iou_type="bbox")
-    preds = []
-    targets = []
 
     model.eval()
-    for batch in dataloader:
+    for batch in tqdm(dataloader):
         images, bboxes, labels = (
             batch["images"],
             batch["bboxes"],
@@ -41,10 +71,9 @@ def calculate_mAP(model: MiniYoloV3, dataloader: DataLoader, device: str = "cpu"
             for bbox, label in zip(bboxes, labels)
         ]
 
-        preds += preds_data
-        targets += target_data
+        batch_mAP = metric(preds_data, target_data)
 
-    metric.update(preds, targets)
     mAP = metric.compute()
+    mAP = serialize_mAP(mAP)
 
     return mAP

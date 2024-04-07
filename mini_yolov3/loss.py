@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.ops import box_convert, box_iou
+import pdb
 
 
 class YOLOLoss(nn.Module):
@@ -135,9 +136,7 @@ def build_targets(
         offsets = cell_ij * cell_size
 
         eps = 1e-8
-        # txy = -torch.log(1 / (xy - offsets + eps) - 1)  # t_x, t_y (N, 2)
         txy = -torch.log(1 / ((xy - offsets) / cell_size + eps) - 1)  # t_x, t_y (N, 2)
-        # txy = xy - offsets
 
         # calculate t_w, t_h
         twh = torch.log(
@@ -169,6 +168,10 @@ def build_targets(
 
         assert target_value.shape == torch.Size([N, A * (5 + num_classes)])
 
-        target[i, cell_ij[:, 1], cell_ij[:, 0], :] = target_value  # (N, A(5 + C))
+        try:
+            target[i, cell_ij[:, 1], cell_ij[:, 0], :] = target_value  # (N, A(5 + C))
+        except:
+            print(cell_ij)
+            pdb.set_trace()
 
     return target

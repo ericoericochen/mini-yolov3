@@ -1,12 +1,14 @@
 import argparse
 import sys
 import json
+import torch
 
 sys.path.append("../")
 
 from mini_yolov3.dataset import SVHNDataset
 from mini_yolov3.model import MiniYoloV3
 from mini_yolov3.trainer import Trainer
+from torch.utils.data import Subset
 
 
 def parse_args():
@@ -16,19 +18,30 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--num_epochs", type=int, default=10)
     parser.add_argument("--lr", type=float, default=3e-4)
-    parser.add_argument("--save_dir", type=str)
+    parser.add_argument("--weight_decay", type=float, default=0.0)
+    parser.add_argument("--lambda_coord", type=float, default=1.0)
+    parser.add_argument("--lambda_noobj", type=float, default=1.0)
+    parser.add_argument("--checkpoint_epoch", type=int, default=1)
+    parser.add_argument("--eval_every", type=int, default=1)
+    parser.add_argument("--save_dir", type=str, required=True)
 
     return parser.parse_args()
 
 
 def main(args):
+    torch.manual_seed(0)
+
+    print("[INFO] Training Mini Yolo V3 on SVHN...")
+
     train_dataset = SVHNDataset(split="train", image_size=args.image_size)
+    # train_dataset = Subset(train_dataset, range(0, 1))
+
     val_dataset = SVHNDataset(split="test", image_size=args.image_size)
 
     with open(args.model_config, "r") as f:
         model_config = json.load(f)
 
-    model = MiniYoloV3.from_config(model_config)
+    model = MiniYoloV3(**model_config)
     trainer = Trainer(
         model=model,
         train_dataset=train_dataset,
@@ -36,7 +49,12 @@ def main(args):
         lr=args.lr,
         batch_size=args.batch_size,
         num_epochs=args.num_epochs,
+        weight_decay=args.weight_decay,
+        lambda_coord=args.lambda_coord,
+        lambda_noobj=args.lambda_noobj,
         save_dir=args.save_dir,
+        checkpoint_epoch=args.checkpoint_epoch,
+        eval_every=args.eval_every,
         device="cpu",
     )
 

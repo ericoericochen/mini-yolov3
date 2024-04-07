@@ -92,68 +92,22 @@ class MiniYoloV3Output:
 
 
 class MiniYoloV3(nn.Module):
-    @staticmethod
-    def from_config(config: dict):
-        backbone = []
-        backbone_def = config["backbone"]
-
-        for i, module_def in enumerate(backbone_def):
-            module_type = module_def["type"]
-
-            if i == 0:
-                assert module_type == "Downsample", "First module must be Downsample"
-
-            if i == len(backbone_def) - 1:
-                assert module_type == "Downsample", "Last module must be Downsample"
-
-            if module_type == "ResidualBlock":
-                assert (
-                    backbone_def[i - 1]["type"] == "Downsample"
-                ), "ResidualBlock must follow Downsample"
-
-                residual_blocks = []
-
-                for i in range(module_def["num_blocks"]):
-                    residual_blocks.append(ResidualBlock(module_def["channels"]))
-
-                residual_blocks = nn.Sequential(*residual_blocks)
-                backbone.append(residual_blocks)
-
-            if module_type == "Downsample":
-                assert (
-                    i == 0 or backbone_def[i - 1]["type"] == "ResidualBlock"
-                ), "Downsample must follow ResidualBlock"
-
-                backbone.append(
-                    Downsample(
-                        in_channels=module_def["in_channels"],
-                        out_channels=module_def["out_channels"],
-                    )
-                )
-
-        return MiniYoloV3(
-            image_size=config["image_size"],
-            num_classes=config["num_classes"],
-            anchors=config["anchors"],
-            num_anchors_per_scale=config["num_anchors_per_scale"],
-            backbone=backbone,
-            num_detection_layers=config["num_detection_layers"],
-        )
-
     def __init__(
         self,
         image_size: int,
         num_classes: int,
         anchors: Union[torch.Tensor, list[list[int]]],
         num_anchors_per_scale: int,
-        backbone: list[nn.Module],
+        backbone_layers: list[dict],
         num_detection_layers: int,
+        **kwargs,
     ):
         super().__init__()
         self.image_size = image_size
         self.num_classes = num_classes
         self.num_anchors_per_scale = num_anchors_per_scale
         self.num_detection_layers = num_detection_layers
+        self.backbone_layers = backbone_layers
 
         if isinstance(anchors, list):
             anchors = torch.tensor(anchors, dtype=torch.float32)
@@ -167,15 +121,53 @@ class MiniYoloV3(nn.Module):
         ), "Number of anchors MUST match num_detection_layers x num_anchors_per_scale"
 
         assert (
-            num_detection_layers <= len(backbone) // 2 + 1
+            num_detection_layers <= len(backbone_layers) // 2 + 1
         ), "num_detection_layers has to be less than the number of downsample layers in the backbone"
 
         self.register_buffer("anchors", anchors)
 
-        self.backbone = nn.ModuleList(backbone)
-
+        self.backbone = self._build_backbone()
         self.upsample_layers = self._build_upsample_layers()
         self.detection_layers = self._build_detection_layers()
+
+    def _build_backbone(self):
+        backbone = nn.ModuleList([])
+
+        for i, module_def in enumerate(self.backbone_layers):
+            module_type = module_def["type"]
+
+            if i == 0:
+                assert module_type == "Downsample", "First module must be Downsample"
+
+            if i == len(self.backbone_layers) - 1:
+                assert module_type == "Downsample", "Last module must be Downsample"
+
+            if module_type == "ResidualBlock":
+                assert (
+                    self.backbone_layers[i - 1]["type"] == "Downsample"
+                ), "ResidualBlock must follow Downsample"
+
+                residual_blocks = []
+
+                for i in range(module_def["num_blocks"]):
+                    residual_blocks.append(ResidualBlock(module_def["channels"]))
+
+                residual_blocks = nn.Sequential(*residual_blocks)
+                backbone.append(residual_blocks)
+
+            if module_type == "Downsample":
+                assert (
+                    i == 0 or self.backbone_layers[i - 1]["type"] == "ResidualBlock"
+                ), "Downsample must follow ResidualBlock"
+
+                backbone.append(
+                    Downsample(
+                        in_channels=module_def["in_channels"],
+                        out_channels=module_def["out_channels"],
+                    )
+                )
+
+        return backbone
 
     def _build_upsample_layers(self):
         upsample_layers = nn.ModuleList([])
@@ -206,6 +198,17 @@ class MiniYoloV3(nn.Module):
         )
 
         return detection_layers
+
+    @property
+    def config(self):
+        return {
+            "image_size": self.image_size,
+            "num_classes": self.num_classes,
+            "backbone_layers": self.backbone_layers,
+            "anchors": self.anchors.tolist(),
+            "num_anchors_per_scale": self.num_anchors_per_scale,
+            "num_detection_layers": self.num_detection_layers,
+        }
 
     def get_yolo_loss(
         self,
@@ -282,7 +285,7 @@ class MiniYoloV3(nn.Module):
 
         return MiniYoloV3Output(pred=pred, bboxes=bounding_boxes)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         assert (
             x.shape[-1] == x.shape[-2] == self.image_size
         ), f"Input image size mismatch, expected: {self.image_size}x{self.image_size}"
