@@ -35,7 +35,7 @@ def main(args):
     print("[INFO] Training Mini Yolo V3 on SVHN...")
 
     train_dataset = SVHNDataset(split="train", image_size=args.image_size)
-    train_dataset = Subset(train_dataset, range(1000))
+    # train_dataset = Subset(train_dataset, range(1000))
 
     val_dataset = SVHNDataset(split="test", image_size=args.image_size)
 

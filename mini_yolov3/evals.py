@@ -4,6 +4,7 @@ from torchmetrics.detection import MeanAveragePrecision
 from torchvision.ops import box_convert
 import torch
 from tqdm import tqdm
+from .loss import YOLOLoss
 
 
 def serialize_mAP(mAP: dict):
@@ -16,7 +17,9 @@ def serialize_mAP(mAP: dict):
     return {key: serialize_metric(value) for key, value in mAP.items()}
 
 
-def calculate_loss(model: MiniYoloV3, dataloader: DataLoader, device: str = "cpu"):
+def calculate_loss(
+    model: MiniYoloV3, dataloader: DataLoader, criterion: YOLOLoss, device: str = "cpu"
+):
     model.eval()
     total_loss = 0
     for batch in tqdm(dataloader):
@@ -30,7 +33,9 @@ def calculate_loss(model: MiniYoloV3, dataloader: DataLoader, device: str = "cpu
         bboxes = [bbox.to(device) for bbox in bboxes]
         labels = [label.to(device) for label in labels]
 
-        loss, _ = model.get_yolo_loss(images, bboxes, labels)
+        # make pred and compute loss
+        pred = model(images)
+        loss, loss_breakdown = criterion(pred, bboxes, labels)
         total_loss += loss.item()
 
     return total_loss / len(dataloader)

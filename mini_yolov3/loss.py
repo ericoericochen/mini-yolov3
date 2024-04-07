@@ -66,22 +66,17 @@ class YOLOLoss(nn.Module):
         pred_conf = pred[..., 4]  # (O, )
         target_conf = target[..., 4]
 
-        conf_loss = self.bce_loss(pred_conf, target_conf)
+        conf_loss = self.lambda_conf * self.bce_loss(pred_conf, target_conf)
 
         # class loss
         obj_pred_class = obj_pred[..., 5:]  # (O, C)
         obj_target_class = obj_target[..., 5:]  # (O, C)
 
         # class_loss = self.cross_entropy(obj_pred_class, obj_target_class)
-        class_loss = self.bce_loss(obj_pred_class, obj_target_class)
+        class_loss = self.lambda_cls * self.bce_loss(obj_pred_class, obj_target_class)
 
         # total loss
-        loss = (
-            self.lambda_coord * coord_loss
-            + self.lambda_conf * conf_loss
-            + self.lambda_cls * class_loss
-        )
-        # loss = coord_loss + conf_loss + class_loss
+        loss = coord_loss + conf_loss + class_loss
 
         return (
             loss,

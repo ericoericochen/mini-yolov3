@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from .loss import YOLOLoss
 from .utils import draw_bounding_boxes
 from torchvision.ops import box_convert
+import torch.nn.functional as F
 
 
 def get_device():
@@ -65,6 +66,8 @@ class Trainer:
         train_save_path = os.path.join(results_dir, f"train_{epoch}.png")
         train_image = self.train_dataset[0]["image"].unsqueeze(0).to(self.device)
         bounding_boxes = self.model.inference(train_image).bboxes
+        train_image = F.interpolate(train_image, size=(128, 128))
+
         train_bbox = draw_bounding_boxes(
             train_image[0].cpu(),
             box_convert(
@@ -83,6 +86,8 @@ class Trainer:
             val_save_path = os.path.join(results_dir, f"val_{epoch}.png")
             val_image = self.val_dataset[0]["image"].unsqueeze(0).to(self.device)
             bounding_boxes = self.model.inference(val_image).bboxes
+            val_image = F.interpolate(val_image, size=(128, 128))
+
             val_bbox = draw_bounding_boxes(
                 val_image[0].cpu(),
                 box_convert(
@@ -97,7 +102,7 @@ class Trainer:
             plt.imshow(val_bbox)
             plt.savefig(val_save_path)
 
-        raise RuntimeError
+        # raise RuntimeError
 
     def train(self):
         # make save dir
@@ -173,16 +178,16 @@ class Trainer:
                 epoch_loss /= len(self.train_loader)
                 losses.append(epoch_loss)
 
-                # if has_val:
-                #     val_loss = calculate_loss(
-                #         model, self.val_loader, device=self.device
-                #     )
-                #     val_losses.append(val_loss)
-                #     tqdm.write(
-                #         f"[Epoch {epoch}] Train Loss: {epoch_loss} | Val Loss: {val_loss}"
-                #     )
-                # else:
-                #     tqdm.write(f"[Epoch {epoch}] Loss: {epoch_loss}")
+                if has_val:
+                    val_loss = calculate_loss(
+                        model, self.val_loader, criterion, device=self.device
+                    )
+                    val_losses.append(val_loss)
+                    tqdm.write(
+                        f"[Epoch {epoch}] Train Loss: {epoch_loss} | Val Loss: {val_loss}"
+                    )
+                else:
+                    tqdm.write(f"[Epoch {epoch}] Loss: {epoch_loss}")
 
                 # visualize object detection results on train and val
                 self.record_object_detection_results(results_dir, epoch)

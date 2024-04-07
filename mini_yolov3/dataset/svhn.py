@@ -57,6 +57,4 @@ class SVHNDataset(ObjectDetectionDataset):
 
         labels = torch.tensor(labels, dtype=torch.int8)
 
-        setattr(labels, "asdf", idx)
-
         return {"image": image, "bbox": bbox, "labels": labels}
