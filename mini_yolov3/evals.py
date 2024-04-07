@@ -22,7 +22,7 @@ def calculate_loss(
 ):
     model.eval()
     total_loss = 0
-    for batch in tqdm(dataloader):
+    for batch in tqdm(dataloader, leave=False):
         images, bboxes, labels = (
             batch["images"],
             batch["bboxes"],
@@ -45,7 +45,7 @@ def calculate_mAP(model: MiniYoloV3, dataloader: DataLoader, device: str = "cpu"
     metric = MeanAveragePrecision(box_format="cxcywh", iou_type="bbox")
 
     model.eval()
-    for batch in tqdm(dataloader):
+    for batch in tqdm(dataloader, leave=False):
         images, bboxes, labels = (
             batch["images"],
             batch["bboxes"],

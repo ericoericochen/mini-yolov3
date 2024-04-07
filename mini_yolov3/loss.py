@@ -23,6 +23,7 @@ class YOLOLoss(nn.Module):
 
         self.mse_loss = nn.MSELoss()
         self.bce_loss = nn.BCEWithLogitsLoss()
+        self.cross_entropy = nn.CrossEntropyLoss()
 
     def forward(
         self,
@@ -72,8 +73,10 @@ class YOLOLoss(nn.Module):
         obj_pred_class = obj_pred[..., 5:]  # (O, C)
         obj_target_class = obj_target[..., 5:]  # (O, C)
 
-        # class_loss = self.cross_entropy(obj_pred_class, obj_target_class)
-        class_loss = self.lambda_cls * self.bce_loss(obj_pred_class, obj_target_class)
+        class_loss = self.lambda_cls * self.cross_entropy(
+            obj_pred_class, obj_target_class
+        )
+        # class_loss = self.lambda_cls * self.bce_loss(obj_pred_class, obj_target_class)
 
         # total loss
         loss = coord_loss + conf_loss + class_loss

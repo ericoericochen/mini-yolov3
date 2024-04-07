@@ -214,6 +214,7 @@ class MiniYoloV3(nn.Module):
     def inference(
         self,
         images: torch.Tensor,
+        confidence_threshold: float = 0.5,
         iou_threshold: float = 0.5,
     ) -> MiniYoloV3Output:
         """
@@ -228,7 +229,6 @@ class MiniYoloV3(nn.Module):
 
         # pred bbox are in cxcywh format
         bbox_pred = convert_yolo_pred_to_bbox(pred, self.anchors, self.num_classes)
-        A = self.anchors.shape[0]
 
         bounding_boxes = []
         for bbox_data in bbox_pred:
@@ -237,8 +237,9 @@ class MiniYoloV3(nn.Module):
             scores = bbox_data[..., 4]
 
             # keep bboxes with confidence score >= confidence_threshold
-            keep_mask = scores >= 0.5
+            keep_mask = scores >= confidence_threshold
             bbox_data = bbox_data[keep_mask]
+
             bbox = bbox[keep_mask]
             scores = scores[keep_mask]
 
