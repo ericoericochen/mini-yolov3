@@ -7,6 +7,7 @@ from .evals import calculate_mAP, calculate_loss
 import os
 import json
 import pprint
+import matplotlib.pyplot as plt
 
 
 def get_device():
@@ -63,6 +64,8 @@ class Trainer:
         checkpoints_dir = os.path.join(self.save_dir, "checkpoints")
         os.makedirs(checkpoints_dir, exist_ok=True)
 
+        loss_plot_path = os.path.join(self.save_dir, "loss.png")
+
         # set up evals json to track mAP
         evals_json = {}
         evals_path = os.path.join(self.save_dir, "evals.json")
@@ -78,6 +81,8 @@ class Trainer:
 
         losses = []
         val_losses = []
+        has_val = self.val_loader is not None
+
         model.train()
         pp = pprint.PrettyPrinter()
         num_iters = len(self.train_loader) * self.num_epochs
@@ -122,7 +127,7 @@ class Trainer:
                 epoch_loss /= len(self.train_loader)
                 losses.append(epoch_loss)
 
-                if self.val_loader:
+                if has_val:
                     val_loss = calculate_loss(
                         model, self.val_loader, device=self.device
                     )
@@ -134,6 +139,16 @@ class Trainer:
                     )
                 else:
                     tqdm.write(f"[Epoch {epoch}] Loss: {epoch_loss}")
+
+                # save loss plot
+                plt.clf()
+                plt.title("Log Loss")
+                plt.semilogy(losses, label="Train Loss")
+                if has_val:
+                    plt.semilogy(val_losses, label="Val Loss")
+
+                plt.legend()
+                plt.savefig(loss_plot_path)
 
                 if (epoch + 1) % self.eval_every == 0:
                     tqdm.write(f"[INFO] Evals Epoch {epoch}")
@@ -147,7 +162,7 @@ class Trainer:
 
                     tqdm.write(f"Train mAP: {pp.pformat(train_mAP)}")
 
-                    if self.val_loader:
+                    if has_val:
                         print("[INFO] Calculating Val mAP")
                         val_mAP = calculate_mAP(
                             model, self.val_loader, device=self.device
