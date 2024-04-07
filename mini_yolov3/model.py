@@ -224,14 +224,30 @@ class MiniYoloV3(nn.Module):
             - confidence_threshold: minimum confidence score to keep a bounding box
             - iou_threshold: threshold for non-maximum suppression
         """
+        B = images.shape[0]
         pred = self(images)
 
+        anchors = self.anchors.chunk(self.num_detection_layers)
+
         # pred bbox are in cxcywh format
-        bbox_pred = convert_yolo_pred_to_bbox(pred, self.anchors, self.num_classes)
+        bbox_pred = [
+            convert_yolo_pred_to_bbox(pred_item, anchor, self.num_classes)
+            for pred_item, anchor in zip(pred, anchors)
+        ]
+
+        # bbox_pred = convert_yolo_pred_to_bbox(pred, self.anchors, self.num_classes)
 
         bounding_boxes = []
-        for bbox_data in bbox_pred:
-            bbox_data = bbox_data.view(-1, 5 + self.num_classes)
+        for i in range(B):
+            bbox_data = torch.cat(
+                [
+                    pred_item[i].view(-1, 5 + self.num_classes)
+                    for pred_item in bbox_pred
+                ],
+                dim=0,
+            )
+
+            # bbox_data = bbox_data.view(-1, 5 + self.num_classes)
             bbox = bbox_data[..., :4]
             scores = bbox_data[..., 4]
 
@@ -286,7 +302,6 @@ class MiniYoloV3(nn.Module):
 
             if i == 0:
                 detect = detection_layer(downsample_results.pop())
-                detect_results.append(detect)
             else:
                 # upsample
                 upsample = self.upsample_layers[i - 1]
@@ -297,7 +312,11 @@ class MiniYoloV3(nn.Module):
                 x = torch.cat([x, skip], dim=1)
 
                 detect = detection_layer(x)
-                detect_results.append(detect)
+
+            detect = detect.permute(0, 2, 3, 1)  # (B, H, W, A(5 + C))
+            detect_results.append(detect)
+
+        return detect_results
 
         # upscale detection results to same shape and concat
         results = []
@@ -329,7 +348,7 @@ def convert_yolo_pred_to_bbox(
     W, H = pred.shape[2], pred.shape[1]
     A = anchors.shape[0]
 
-    pred = pred.view(-1, H, W, A, 5 + num_classes)  # (B, H, W, A, 5 + C)
+    pred = pred.contiguous().view(-1, H, W, A, 5 + num_classes)  # (B, H, W, A, 5 + C)
 
     pred_tx = pred[..., 0]  # (B, H, W, A)
     pred_ty = pred[..., 1]  # (B, H, W, A)
