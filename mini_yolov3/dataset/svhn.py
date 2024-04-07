@@ -1,11 +1,11 @@
 from .base import ObjectDetectionDataset, ObjectDetectionData
 from datasets import load_dataset
-
+from torchvision.transforms import v2
 from ..utils import to_tensor
-
 import torch
 from typing import Literal
 from PIL import Image
+import random
 
 
 class SVHNDataset(ObjectDetectionDataset):
@@ -14,11 +14,15 @@ class SVHNDataset(ObjectDetectionDataset):
         split: Literal["train", "test"] = "train",
         image_size: int = 32,
         normalize_bbox: bool = True,
+        data_augment: bool = False,
+        augment_prob: float = 0.25,
     ):
         super().__init__()
         self.split = split
         self.image_size = image_size
         self.normalize_bbox = normalize_bbox
+        self.data_augment = data_augment
+        self.augment_prob = augment_prob
 
         self.dataset = load_dataset("svhn", "full_numbers", split=split)
 
@@ -42,6 +46,11 @@ class SVHNDataset(ObjectDetectionDataset):
 
         # convert image to tensor
         image = to_tensor(image)
+
+        if self.data_augment:
+            prob = torch.rand(1).item()
+            if prob <= self.augment_prob:
+                image = v2.ColorJitter()(image)
 
         # scale bounding boxes
         w_factor = nw / w

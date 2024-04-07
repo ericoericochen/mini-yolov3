@@ -19,7 +19,7 @@ class Downsample(nn.Module):
 
         self.downsample = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1),
-            nn.InstanceNorm2d(out_channels, affine=True),
+            nn.BatchNorm2d(out_channels),
         )
 
     def forward(self, x: torch.Tensor):
@@ -41,7 +41,7 @@ class Upsample(nn.Module):
                 padding=1,
                 output_padding=1,
             ),
-            nn.InstanceNorm2d(out_channels, affine=True),
+            nn.BatchNorm2d(out_channels),
         )
 
     def forward(self, x: torch.Tensor):
@@ -56,10 +56,10 @@ class ResidualBlock(nn.Module):
 
         self.conv = nn.Sequential(
             nn.Conv2d(channels, mid_channels, kernel_size=1, stride=1),
-            nn.InstanceNorm2d(mid_channels, affine=True),
+            nn.BatchNorm2d(mid_channels),
             nn.LeakyReLU(),
             nn.Conv2d(mid_channels, channels, kernel_size=3, stride=1, padding=1),
-            nn.InstanceNorm2d(channels, affine=True),
+            nn.BatchNorm2d(channels),
         )
 
     def forward(self, x: torch.Tensor):
@@ -76,7 +76,6 @@ class DetectionLayer(nn.Module):
         dim = num_anchors * (5 + num_classes)
         self.detection = nn.Sequential(
             nn.Conv2d(in_channels, dim, 3, 1, 1),
-            nn.InstanceNorm2d(dim, affine=True),
             nn.LeakyReLU(),
             nn.Conv2d(dim, dim, 1, 1),
         )

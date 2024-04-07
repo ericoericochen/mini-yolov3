@@ -22,6 +22,8 @@ def parse_args():
     parser.add_argument("--lambda_coord", type=float, default=0.05)
     parser.add_argument("--lambda_conf", type=float, default=1.0)
     parser.add_argument("--lambda_cls", type=float, default=0.5)
+    parser.add_argument("--data_augment", action="store_true", default=False)
+    parser.add_argument("--augment_prob", type=float, default=0.25)
     parser.add_argument("--checkpoint_epoch", type=int, default=1)
     parser.add_argument("--eval_every", type=int, default=1)
     parser.add_argument("--save_dir", type=str, required=True)
@@ -34,9 +36,12 @@ def main(args):
 
     print("[INFO] Training Mini Yolo V3 on SVHN...")
 
-    train_dataset = SVHNDataset(split="train", image_size=args.image_size)
-    # train_dataset = Subset(train_dataset, range(1000))
-
+    train_dataset = SVHNDataset(
+        split="train",
+        image_size=args.image_size,
+        data_augment=args.data_augment,
+        augment_prob=args.augment_prob,
+    )
     val_dataset = SVHNDataset(split="test", image_size=args.image_size)
 
     with open(args.model_config, "r") as f:
