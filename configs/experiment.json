@@ -30,10 +30,8 @@
   ],
   "anchors": [
     [0.5, 0.5],
-    [0.2, 0.8],
-    [0.2, 0.8],
-    [0.5, 0.5]
+    [0.2, 0.8]
   ],
   "num_anchors_per_scale": 2,
-  "num_detection_layers": 2
+  "num_detection_layers": 1
 }

@@ -58,7 +58,9 @@ class Trainer:
         # make save dir
         os.makedirs(self.save_dir, exist_ok=True)
         checkpoints_dir = os.path.join(self.save_dir, "checkpoints")
+        evals_dir = os.path.join(self.save_dir, "evals")
         os.makedirs(checkpoints_dir, exist_ok=True)
+        os.makedirs(evals_dir, exist_ok=True)
 
         loss_plot_path = os.path.join(self.save_dir, "loss.png")
 
@@ -127,14 +129,14 @@ class Trainer:
                 #     val_loss = calculate_loss(
                 #         model, self.val_loader, device=self.device
                 #     )
-
                 #     val_losses.append(val_loss)
-
                 #     tqdm.write(
                 #         f"[Epoch {epoch}] Train Loss: {epoch_loss} | Val Loss: {val_loss}"
                 #     )
                 # else:
                 #     tqdm.write(f"[Epoch {epoch}] Loss: {epoch_loss}")
+
+                # visualize object detection results on train and val
 
                 # save loss plot
                 plt.clf()

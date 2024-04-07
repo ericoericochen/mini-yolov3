@@ -2,8 +2,7 @@ import torch
 
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.ops import box_convert, box_iou
-import pdb
+from torchvision.ops import box_convert
 
 
 class YOLOLoss(nn.Module):
@@ -62,10 +61,15 @@ class YOLOLoss(nn.Module):
         coord_loss = self.lambda_coord * self.mse_loss(obj_pred_txywh, obj_target_txywh)
 
         # confidence loss
-        obj_pred_conf = obj_pred[..., 4]  # (O, )
-        target_pred_conf = torch.ones_like(obj_pred_conf, device=pred.device)
+        pred_conf = pred[..., 4]  # (O, )
+        target_conf = target[..., 4]
 
-        obj_conf_loss = self.bce_loss(obj_pred_conf, target_pred_conf)
+        conf_loss = self.bce_loss(pred_conf, target_conf)
+
+        # obj_pred_conf = obj_pred[..., 4]  # (O, )
+        # target_pred_conf = torch.ones_like(obj_pred_conf, device=pred.device)
+
+        # obj_conf_loss = self.bce_loss(obj_pred_conf, target_pred_conf)
 
         # class loss
         obj_pred_class = obj_pred[..., 5:]  # (O, C)
@@ -74,26 +78,35 @@ class YOLOLoss(nn.Module):
         class_loss = self.cross_entropy(obj_pred_class, obj_target_class)
 
         # noobj conf loss
-        noobj_mask = ~obj_mask
-        noobj_pred_conf = pred[noobj_mask][:, 4]
-        noobj_target_conf = torch.zeros_like(noobj_pred_conf, device=pred.device)
+        # noobj_mask = ~obj_mask
+        # noobj_pred_conf = pred[noobj_mask][:, 4]
+        # noobj_target_conf = torch.zeros_like(noobj_pred_conf, device=pred.device)
 
-        noobj_loss = self.lambda_noobj * self.bce_loss(
-            noobj_pred_conf, noobj_target_conf
-        )
+        # noobj_loss = self.lambda_noobj * self.bce_loss(
+        #     noobj_pred_conf, noobj_target_conf
+        # )
 
         # total loss
-        loss = coord_loss + obj_conf_loss + noobj_loss + class_loss
+        # loss = coord_loss + obj_conf_loss + noobj_loss + class_loss
+        loss = coord_loss + conf_loss + class_loss
 
         return (
             loss,
             {
                 "coord_loss": coord_loss,
-                "obj_conf_loss": obj_conf_loss,
+                "conf_loss": conf_loss,
                 "class_loss": class_loss,
-                "noobj_loss": noobj_loss,
             },
         )
+        # return (
+        #     loss,
+        #     {
+        #         "coord_loss": coord_loss,
+        #         "obj_conf_loss": obj_conf_loss,
+        #         "class_loss": class_loss,
+        #         "noobj_loss": noobj_loss,
+        #     },
+        # )
 
 
 def build_targets(
@@ -151,14 +164,20 @@ def build_targets(
         min_twh_idx = sum_twh.argmin(dim=-1)
 
         # construct confidence scores
-        confidence = torch.zeros(N, A, 1).to(bbox.device)
+        confidence = torch.zeros(N, A, 1, device=bbox.device)
         confidence[:, min_twh_idx] = 1
 
+        # print(confidence)
+
+        # raise RuntimeError
+
         # construct one hot vectors for class labels
-        class_labels = F.one_hot(label.long(), num_classes).float()  # (N, C)
-        class_labels = class_labels.unsqueeze(1).repeat(
-            1, A, 1
-        )  # (N, 1, C) -> (N, A, C)
+        class_labels = torch.zeros(N, A, num_classes, device=bbox.device)  # (N, A, C)
+        class_labels[
+            torch.arange(0, N, dtype=torch.long, device=bbox.device),
+            min_twh_idx,
+            label.long(),
+        ] = 1  # Assign 1 to the class label of the best bounding box prior
 
         # construct target value
         target_value = torch.cat(
