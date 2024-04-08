@@ -5,27 +5,27 @@
     {
       "type": "Downsample",
       "in_channels": 3,
-      "out_channels": 16
-    },
-    {
-      "type": "ResidualBlock",
-      "num_blocks": 2,
-      "channels": 16
-    },
-    {
-      "type": "Downsample",
-      "in_channels": 16,
       "out_channels": 32
     },
     {
       "type": "ResidualBlock",
-      "num_blocks": 4,
+      "num_blocks": 2,
       "channels": 32
     },
     {
       "type": "Downsample",
       "in_channels": 32,
       "out_channels": 64
+    },
+    {
+      "type": "ResidualBlock",
+      "num_blocks": 4,
+      "channels": 64
+    },
+    {
+      "type": "Downsample",
+      "in_channels": 64,
+      "out_channels": 128
     }
   ],
   "anchors": [

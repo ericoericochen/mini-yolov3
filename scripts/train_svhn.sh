@@ -10,6 +10,6 @@ poetry run python3 train_svhn.py \
     --augment_prob=0.05 \
     --eval_every=10 \
     --checkpoint_epoch=10 \
-    --save_dir=../checkpoints/svhn_experiment_cross_entropy \
+    --save_dir=../checkpoints/svhn_fat \
     # --save_dir=../checkpoints/svhn_experiment_small_wd \
     # --save_dir=../checkpoints/svhn_experiment_big \

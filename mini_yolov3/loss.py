@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.ops import box_convert
+import pdb
 
 
 class YOLOLoss(nn.Module):
@@ -38,18 +39,22 @@ class YOLOLoss(nn.Module):
         A = self.anchors.shape[0]
         S = len(pred)  # number of scales
 
-        targets = []
-        anchors = self.anchors.chunk(S)
-        for anchor, pred_item in zip(anchors, pred):
-            grid_size = pred_item.shape[1]
-            target = build_targets(
-                bboxes=bboxes,
-                labels=labels,
-                grid_size=grid_size,
-                anchors=anchor,
-                num_classes=self.num_classes,
-            )
-            targets.append(target)
+        # targets = []
+        # anchors = self.anchors.chunk(S)
+        # for anchor, pred_item in zip(anchors, pred):
+        #     grid_size = pred_item.shape[1]
+        #     target = build_targets(
+        #         bboxes=bboxes,
+        #         labels=labels,
+        #         grid_size=grid_size,
+        #         anchors=anchor,
+        #         num_classes=self.num_classes,
+        #     )
+        #     targets.append(target)
+
+        targets = build_targets_new(
+            pred, bboxes, labels, self.anchors, self.num_classes
+        )
 
         target = torch.cat(
             [target.view(-1, 5 + self.num_classes) for target in targets], dim=0
@@ -71,6 +76,11 @@ class YOLOLoss(nn.Module):
         # get obj pred and target
         obj_pred = pred[obj_mask]
         obj_target = target[obj_mask]
+
+        # print("obj_pred", obj_pred.shape)
+        # print("obj_target", obj_target.shape)
+
+        # raise RuntimeError
 
         # coord loss
         obj_pred_txywh = obj_pred[..., :4]  # (O, 4)
@@ -105,6 +115,114 @@ class YOLOLoss(nn.Module):
                 "class_loss": class_loss,
             },
         )
+
+
+# NOTE: there may be a more vectorized way to do this, this is the
+# most readable way I've been able to do it :)
+def build_targets_new(
+    pred: list[torch.Tensor],
+    bboxes: list[torch.Tensor],
+    labels: list[torch.Tensor],
+    anchors: torch.Tensor,
+    num_classes: int,
+):
+    device = pred[0].device
+    A = anchors.shape[0]
+    B = pred[0].shape[0]
+    S = len(pred)
+
+    num_anchors_per_scale = A // S
+
+    # print("anchors_per_scale", num_anchors_per_scale)
+
+    targets = [
+        torch.zeros(
+            B,
+            pred_item.shape[1],
+            pred_item.shape[2],
+            num_anchors_per_scale,
+            (5 + num_classes),
+            device=device,
+        )
+        for pred_item in pred
+    ]
+
+    for i, (bbox, label) in enumerate(zip(bboxes, labels)):
+        # convert bbox to cxcywh format
+        bbox = box_convert(bbox, in_fmt="xywh", out_fmt="cxcywh")
+        N = bbox.shape[0]  # number of bounding boxes
+
+        # find the bounding box prior
+        wh = bbox[..., 2:]
+
+        # get the anchor with the closest aspect ratio
+        prior_diff = wh.unsqueeze(1) - anchors.unsqueeze(0)  # (N, A, 2)
+        prior_idx = prior_diff.abs().sum(dim=-1).argmin(dim=-1)  # (N, A) -> (N, )
+        target_idx = prior_idx // num_anchors_per_scale
+
+        # convert each bounding box to target value
+        for j, (idx, p_idx) in enumerate(zip(target_idx, prior_idx)):
+            target = targets[idx.item()][i]  # get correct target by idx and batch idx
+
+            # print(idx)
+
+            a_idx = p_idx % num_anchors_per_scale
+            anchor = anchors[p_idx]
+            grid_size = target.shape[1]
+            curr_bbox = bbox[j]
+
+            # convert xywh to txywh
+            xy = curr_bbox[:2]
+            wh = curr_bbox[2:]
+
+            cell_size = 1 / grid_size
+            cell_ij = (xy // cell_size).int()
+
+            # c_x, c_y from the paper
+            offsets = cell_ij * cell_size
+
+            # compute txy by inverting equation in paper
+            eps = 1e-8
+            txy = -torch.log(
+                1 / ((xy - offsets) / cell_size + eps) - 1
+            )  # t_x, t_y (2, )
+
+            # print(xy)
+            # print(txy)
+
+            # compute twh by inverting equation in paper
+            # print(anchor)
+            twh = (wh / anchor).log()  # (2, )
+
+            confidence = torch.tensor([1], device=device)
+            curr_label = label[j]
+            class_labels = torch.zeros(num_classes, device=device)
+            class_labels[curr_label.long()] = 1
+
+            target_value = torch.cat(
+                [txy, twh, confidence, class_labels],
+                dim=0,
+            )
+
+            # print(cell_ij)
+            # print(target_value)
+
+            # print(xy)
+            # print(cell_ij)
+            # print(target.shape)
+            try:
+                target[cell_ij[1], cell_ij[0], a_idx] = target_value
+            except:
+                # invalid bounding box DO NOT COUNT
+                pass
+                # target[cell_ij[1], cell_ij[0], a_idx] = -100
+
+            # target[]
+
+        # targets[]
+
+        # raise RuntimeError
+    return targets
 
 
 def build_targets(
