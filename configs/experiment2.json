@@ -9,23 +9,23 @@
     },
     {
       "type": "ResidualBlock",
-      "num_blocks": 2,
+      "num_blocks": 1,
       "channels": 32
     },
     {
       "type": "Downsample",
       "in_channels": 32,
-      "out_channels": 64
+      "out_channels": 128
     },
     {
       "type": "ResidualBlock",
-      "num_blocks": 4,
-      "channels": 64
+      "num_blocks": 2,
+      "channels": 128
     },
     {
       "type": "Downsample",
-      "in_channels": 64,
-      "out_channels": 128
+      "in_channels": 128,
+      "out_channels": 256
     }
   ],
   "anchors": [

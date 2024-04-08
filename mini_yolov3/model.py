@@ -12,18 +12,28 @@ class Downsample(nn.Module):
     Downsamples spatial resolution by 2
     """
 
-    def __init__(self, in_channels: int, out_channels: int):
+    def __init__(self, in_channels: int, out_channels: int, with_avgpool: bool = False):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
+        self.with_avgpool = with_avgpool
 
         self.downsample = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(out_channels),
+            nn.LeakyReLU(),
         )
 
+        if with_avgpool:
+            self.avgpool = nn.AvgPool2d(kernel_size=3, stride=1, padding=1)
+
     def forward(self, x: torch.Tensor):
-        return self.downsample(x)
+        x = self.downsample(x)
+
+        if self.with_avgpool:
+            x = self.avgpool(x)
+
+        return x
 
 
 class Upsample(nn.Module):
@@ -40,8 +50,20 @@ class Upsample(nn.Module):
                 stride=2,
                 padding=1,
                 output_padding=1,
+                bias=False,
             ),
             nn.BatchNorm2d(out_channels),
+            nn.LeakyReLU(),
+            nn.Conv2d(
+                out_channels,
+                out_channels,
+                kernel_size=3,
+                stride=1,
+                padding=1,
+                bias=False,
+            ),
+            nn.BatchNorm2d(out_channels),
+            nn.LeakyReLU(),
         )
 
     def forward(self, x: torch.Tensor):
@@ -55,11 +77,14 @@ class ResidualBlock(nn.Module):
         mid_channels = channels // 2
 
         self.conv = nn.Sequential(
-            nn.Conv2d(channels, mid_channels, kernel_size=1, stride=1),
+            nn.Conv2d(channels, mid_channels, kernel_size=1, stride=1, bias=False),
             nn.BatchNorm2d(mid_channels),
             nn.LeakyReLU(),
-            nn.Conv2d(mid_channels, channels, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(
+                mid_channels, channels, kernel_size=3, stride=1, padding=1, bias=False
+            ),
             nn.BatchNorm2d(channels),
+            nn.LeakyReLU(),
         )
 
     def forward(self, x: torch.Tensor):
@@ -76,6 +101,8 @@ class DetectionLayer(nn.Module):
         dim = num_anchors * (5 + num_classes)
         self.detection = nn.Sequential(
             nn.Conv2d(in_channels, dim, 3, 1, 1),
+            nn.LeakyReLU(),
+            nn.Conv2d(dim, dim, 3, 1, 1),
             nn.LeakyReLU(),
             nn.Conv2d(dim, dim, 1, 1),
         )
@@ -119,8 +146,12 @@ class MiniYoloV3(nn.Module):
             anchors.shape[0] == num_detection_layers * num_anchors_per_scale
         ), "Number of anchors MUST match num_detection_layers x num_anchors_per_scale"
 
+        num_downsample_layers = sum(
+            [1 for layer in backbone_layers if layer["type"] == "Downsample"]
+        )
+
         assert (
-            num_detection_layers <= len(backbone_layers) // 2 + 1
+            num_detection_layers <= num_downsample_layers
         ), "num_detection_layers has to be less than the number of downsample layers in the backbone"
 
         self.register_buffer("anchors", anchors)
@@ -153,16 +184,17 @@ class MiniYoloV3(nn.Module):
 
                 residual_blocks = nn.Sequential(*residual_blocks)
                 backbone.append(residual_blocks)
-
-            if module_type == "Downsample":
+            elif module_type == "Downsample":
                 assert (
                     i == 0 or self.backbone_layers[i - 1]["type"] == "ResidualBlock"
                 ), "Downsample must follow ResidualBlock"
 
+                with_avgpool = module_def.get("with_avgpool", False)
                 backbone.append(
                     Downsample(
                         in_channels=module_def["in_channels"],
                         out_channels=module_def["out_channels"],
+                        with_avgpool=with_avgpool,
                     )
                 )
 
@@ -289,7 +321,7 @@ class MiniYoloV3(nn.Module):
         for module in self.backbone:
             x = module(x)
 
-            if isinstance(module, Downsample):
+            if isinstance(module, Downsample) or isinstance(module, nn.AvgPool2d):
                 downsample_results.append(x)
 
         # detection layers
@@ -314,20 +346,6 @@ class MiniYoloV3(nn.Module):
             detect_results.append(detect)
 
         return detect_results
-
-        # upscale detection results to same shape and concat
-        results = []
-
-        for i, detect in enumerate(detect_results):
-            exp_factor = len(detect_results) - 1 - i
-            scale_factor = 2**exp_factor
-            detect = F.interpolate(detect, scale_factor=scale_factor, mode="bilinear")
-            results.append(detect)
-
-        x = torch.cat(results, dim=1)  # (B, A(5 + C), H, W)
-        x = x.permute(0, 2, 3, 1)  # (B, H, W, A(5 + C))
-
-        return x
 
 
 def convert_yolo_pred_to_bbox(
