@@ -32,6 +32,7 @@ class Trainer:
         lambda_coord: float = 0.05,
         lambda_conf: float = 1.0,
         lambda_cls: float = 0.5,
+        log_detections: bool = True,
         save_dir: str = "./yolo_checkpoints",
         checkpoint_epoch: int = 1,
         eval_every: int = 1,
@@ -42,7 +43,7 @@ class Trainer:
         self.val_dataset = val_dataset
 
         self.train_loader = DataLoader(
-            train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn
+            train_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn
         )
 
         if val_dataset:
@@ -57,6 +58,7 @@ class Trainer:
         self.lambda_conf = lambda_conf
         self.lambda_cls = lambda_cls
         self.save_dir = save_dir
+        self.log_detections = log_detections
         self.checkpoint_epoch = checkpoint_epoch
         self.eval_every = eval_every
         self.device = device
@@ -123,13 +125,13 @@ class Trainer:
             json.dump({}, f)
 
         # prepare model and optimizer
+        num_iters = len(self.train_loader) * self.num_epochs
+
         model = self.model.to(self.device)
         optimizer = torch.optim.Adam(
             model.parameters(), lr=self.lr, weight_decay=self.weight_decay
         )
-        scheduler = CosineAnnealingLR(
-            optimizer, T_max=len(self.train_loader) * self.num_epochs
-        )
+        # scheduler = CosineAnnealingLR(optimizer, T_max=num_iters)
 
         losses = []
         val_losses = []
@@ -143,7 +145,6 @@ class Trainer:
         )
 
         pp = pprint.PrettyPrinter()
-        num_iters = len(self.train_loader) * self.num_epochs
 
         with tqdm(total=num_iters, position=0) as pbar:
             for epoch in range(self.num_epochs):
@@ -172,13 +173,13 @@ class Trainer:
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
-                    scheduler.step()
+                    # scheduler.step()
 
                     pbar.update(1)
                     pbar.set_postfix(
                         loss=loss.item(),
                         **{k: v.item() for k, v in loss_breakdown.items()},
-                        lr=scheduler.get_last_lr()[0],
+                        # lr=scheduler.get_lr(),
                     )
 
                     losses.append(loss.item())
@@ -202,10 +203,11 @@ class Trainer:
                 # else:
                 #     tqdm.write(f"[Epoch {epoch}] Loss: {epoch_loss}")
 
-                tqdm.write(f"[Epoch {epoch}] Loss: {epoch_loss}")
+                # tqdm.write(f"[Epoch {epoch}] Loss: {epoch_loss}")
 
                 # visualize object detection results on train and val
-                self.record_object_detection_results(results_dir, epoch)
+                if self.log_detections:
+                    self.record_object_detection_results(results_dir, epoch)
 
                 # save loss plot
                 # plt.clf()

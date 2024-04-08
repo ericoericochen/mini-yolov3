@@ -42,7 +42,9 @@ def main(args):
         data_augment=args.data_augment,
         augment_prob=args.augment_prob,
     )
-    val_dataset = SVHNDataset(split="test", image_size=args.image_size)
+
+    train_dataset = Subset(train_dataset, range(0, 1))
+    # val_dataset = SVHNDataset(split="test", image_size=args.image_size)
 
     with open(args.model_config, "r") as f:
         model_config = json.load(f)
@@ -51,7 +53,7 @@ def main(args):
     trainer = Trainer(
         model=model,
         train_dataset=train_dataset,
-        val_dataset=val_dataset,
+        # val_dataset=val_dataset,
         lr=args.lr,
         batch_size=args.batch_size,
         num_epochs=args.num_epochs,

@@ -41,6 +41,14 @@ class YOLOLoss(nn.Module):
             [target.view(-1, 5 + self.num_classes) for target in targets], dim=0
         )  # (X, 5 + C)
 
+        # target = build_targets_(
+        #     bboxes,
+        #     labels,
+        #     (pred[0].shape[2], pred[0].shape[1]),
+        #     self.anchors,
+        #     self.num_classes,
+        # ).view(-1, 5 + self.num_classes)
+
         pred = torch.cat(
             [
                 pred_item.contiguous().view(-1, 5 + self.num_classes)
@@ -62,12 +70,19 @@ class YOLOLoss(nn.Module):
 
         coord_loss = self.lambda_coord * self.mse_loss(obj_pred_txywh, obj_target_txywh)
 
+        coord_loss = torch.tensor(0.0, device=coord_loss.device)
+
         # confidence loss
         pred_conf = pred[..., 4]  # (O, )
         target_conf = target[..., 4]
 
+        mask = target_conf == 1
+        conf_loss = self.bce_loss(
+            pred_conf[mask], target_conf[mask]
+        ) + 0.5 * self.bce_loss(pred_conf[~mask], target_conf[~mask])
+
         # conf_loss = self.lambda_conf * self.bce(pred_conf.sigmoid(), target_conf)
-        conf_loss = self.lambda_conf * self.bce_loss(pred_conf, target_conf)
+        # conf_loss = self.lambda_conf * self.bce_loss(pred_conf, target_conf)
 
         # class loss
         obj_pred_class = obj_pred[..., 5:]  # (O, C)
@@ -180,3 +195,80 @@ def build_targets(
                 pass
 
     return targets
+
+
+def build_targets_(
+    bboxes: list[torch.Tensor],
+    labels: list[torch.Tensor],
+    grid_size: tuple[int, int],
+    anchors: torch.Tensor,
+    num_classes: int,
+):
+    """
+    Construct Target for Loss Calculation
+
+    Params:
+        - bboxes: list of bounding boxes in xywh format
+        - grid_size: tuple of grid size (W, H)
+
+    Returns: (B, A * 6, G, G)
+    """
+    A = anchors.shape[0]
+    B = len(bboxes)
+    W, H = grid_size
+
+    grid_dim = torch.tensor(grid_size, device=bboxes[0].device)
+    cell_size = 1 / grid_dim
+
+    target = torch.zeros(B, H, W, A * (5 + num_classes)).to(bboxes[0].device)
+
+    for i, (bbox, label) in enumerate(zip(bboxes, labels)):
+        # convert bbox to cxcywh format
+        bbox = box_convert(bbox, in_fmt="xywh", out_fmt="cxcywh")
+
+        N = bbox.shape[0]  # number of bounding boxes
+
+        # get the cell each bbox belongs to
+        xy = bbox[:, :2]  # (N, 2)
+        wh = bbox[:, 2:]  # (N, 2)
+        cell_ij = (xy // cell_size).int()
+
+        # c_x, c_y from the paper
+        offsets = cell_ij * cell_size
+
+        eps = 1e-8
+        # txy = -torch.log(1 / (xy - offsets + eps) - 1)  # t_x, t_y (N, 2)
+        txy = -torch.log(1 / ((xy - offsets) / cell_size + eps) - 1)  # t_x, t_y (N, 2)
+        # txy = xy - offsets
+
+        # calculate t_w, t_h
+        twh = torch.log(
+            wh.unsqueeze(1) / anchors.unsqueeze(0)
+        )  # (N, 1, 2), (1, A, 2) -> (N, A, 2)
+
+        # repeat txy for the number of anchors
+        txy = txy.unsqueeze(1).repeat(1, A, 1)  # (N, 1, 2) -> (N, A, 2)
+
+        # construct confidence scores
+        confidence = torch.ones(N, A, 1).to(bbox.device)
+
+        # construct one hot vectors for class labels
+        class_labels = F.one_hot(label.long(), num_classes).float()  # (N, C)
+        class_labels = class_labels.unsqueeze(1).repeat(
+            1, A, 1
+        )  # (N, 1, C) -> (N, A, C)
+
+        # construct target value
+        target_value = torch.cat(
+            [txy, twh, confidence, class_labels], dim=-1
+        )  # (N, A, 5 + C)
+        target_value = target_value.view(N, -1)  # (N, A(5 + C))
+
+        assert target_value.shape == torch.Size([N, A * (5 + num_classes)])
+
+        try:
+            target[i, cell_ij[:, 1], cell_ij[:, 0], :] = target_value  # (N, A(5 + C))
+        except:
+            pass
+
+    return target

@@ -1,6 +1,6 @@
 {
   "num_classes": 10,
-  "image_size": 32,
+  "image_size": 64,
   "backbone_layers": [
     {
       "type": "Downsample",
@@ -9,7 +9,7 @@
     },
     {
       "type": "ResidualBlock",
-      "num_blocks": 8,
+      "num_blocks": 4,
       "channels": 16
     },
     {
@@ -19,7 +19,7 @@
     },
     {
       "type": "ResidualBlock",
-      "num_blocks": 16,
+      "num_blocks": 8,
       "channels": 32
     },
     {
