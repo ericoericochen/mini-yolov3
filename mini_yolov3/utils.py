@@ -82,3 +82,7 @@ def draw_grid(image: Union[Image.Image, torch.Tensor], grid_size: int):
         draw.line([(x, 0), (x, height)], fill=grid_color, width=thickness)
 
     return image
+
+
+def count_model_parameters(model):
+    return sum(p.numel() for p in model.parameters())
