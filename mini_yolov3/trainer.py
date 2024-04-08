@@ -178,19 +178,19 @@ class Trainer:
                 epoch_loss /= len(self.train_loader)
                 losses.append(epoch_loss)
 
-                # if has_val:
-                #     val_loss = calculate_loss(
-                #         model, self.val_loader, criterion, device=self.device
-                #     )
-                #     val_losses.append(val_loss)
-                #     tqdm.write(
-                #         f"[Epoch {epoch}] Train Loss: {epoch_loss} | Val Loss: {val_loss}"
-                #     )
-                # else:
-                #     tqdm.write(f"[Epoch {epoch}] Loss: {epoch_loss}")
+                if has_val:
+                    val_loss = calculate_loss(
+                        model, self.val_loader, criterion, device=self.device
+                    )
+                    val_losses.append(val_loss)
+                    tqdm.write(
+                        f"[Epoch {epoch}] Train Loss: {epoch_loss} | Val Loss: {val_loss}"
+                    )
+                else:
+                    tqdm.write(f"[Epoch {epoch}] Loss: {epoch_loss}")
 
                 # visualize object detection results on train and val
-                # self.record_object_detection_results(results_dir, epoch)
+                self.record_object_detection_results(results_dir, epoch)
 
                 # save loss plot
                 plt.clf()

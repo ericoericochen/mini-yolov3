@@ -226,7 +226,6 @@ class MiniYoloV3(nn.Module):
         """
         B = images.shape[0]
         pred = self(images)
-
         anchors = self.anchors.chunk(self.num_detection_layers)
 
         # pred bbox are in cxcywh format
@@ -234,8 +233,6 @@ class MiniYoloV3(nn.Module):
             convert_yolo_pred_to_bbox(pred_item, anchor, self.num_classes)
             for pred_item, anchor in zip(pred, anchors)
         ]
-
-        # bbox_pred = convert_yolo_pred_to_bbox(pred, self.anchors, self.num_classes)
 
         bounding_boxes = []
         for i in range(B):
