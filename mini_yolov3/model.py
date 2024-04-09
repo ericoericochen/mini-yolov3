@@ -1,5 +1,8 @@
 import torch
 import torch.nn as nn
+from dataclasses import dataclass
+from typing import TypedDict
+from torchvision.ops import nms, box_convert
 
 
 class ConvLayer(nn.Module):
@@ -24,6 +27,19 @@ class ConvLayer(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.conv(x)
+
+
+class BoundingBoxPrediction(TypedDict):
+    bboxes: torch.Tensor
+    confidence: torch.Tensor
+    labels: torch.Tensor
+    scores: torch.Tensor
+
+
+@dataclass
+class YOLOInferenceOutput:
+    pred: torch.Tensor
+    bboxes: list[BoundingBoxPrediction]
 
 
 class YOLO(nn.Module):
@@ -102,8 +118,75 @@ class YOLO(nn.Module):
         images: torch.Tensor,
         confidence_threshold: float = 0.5,
         iou_threshold: float = 0.5,
-    ):
-        pass
+    ) -> YOLOInferenceOutput:
+        """
+        Predict bounding boxes for input images
+
+        Params:
+            - images: (B, C, H, W) input images
+            - confidence_threshold: minimum confidence score to keep a bounding box
+            - iou_threshold: threshold for non-maximum suppression
+        """
+        pred = self(images)
+        cell_size = 1 / self.S
+        bounding_boxes = []
+
+        for pred_bbox in pred:
+            pred_bbox = pred_bbox.permute(1, 2, 0)
+            bbox = pred_bbox[..., : -self.C].view(self.S, self.S, self.B, 5)
+            bbox_conf = bbox[..., 0]
+            bbox_x = bbox[..., 1]
+            bbox_y = bbox[..., 2]
+            bbox_wh = bbox[..., 3:]
+
+            # scale bounding box pred to global coordinates
+            x_offsets, y_offsets = torch.meshgrid(
+                torch.arange(self.S), torch.arange(self.S), indexing="xy"
+            )
+
+            bbox_x = (bbox_x + x_offsets.unsqueeze(-1)) * cell_size
+            bbox_y = (bbox_y + y_offsets.unsqueeze(-1)) * cell_size
+
+            # combine xywh
+            bbox_xywh = torch.cat(
+                [bbox_x.unsqueeze(-1), bbox_y.unsqueeze(-1), bbox_wh], dim=-1
+            )
+
+            bbox_xywh = bbox_xywh.contiguous().view(-1, 4)
+            bbox_conf = bbox_conf.contiguous().view(-1)
+
+            # keep boxes above a confidence threshold
+            keep_mask = bbox_conf >= confidence_threshold
+            bbox_xywh = bbox_xywh[keep_mask]
+            bbox_conf = bbox_conf[keep_mask]
+
+            print(bbox_xywh.shape, bbox_conf.shape)
+
+            pred_classes = (
+                pred_bbox[..., -self.C :].repeat(1, 1, self.B).view(-1, self.C)
+            )
+            pred_classes = pred_classes[keep_mask]
+
+            # non-maximum suppression
+            bbox_xyxy = box_convert(bbox_xywh, in_fmt="cxcywh", out_fmt="xyxy")
+            nms_idx = nms(bbox_xyxy, bbox_conf, iou_threshold)
+
+            # process kept boxes
+            bbox = bbox_xywh[nms_idx]
+            conf = bbox_conf[nms_idx].clip(0, 1)
+            classes = pred_classes[nms_idx]
+            labels = classes.argmax(dim=-1)
+            scores = classes.max(dim=-1).values.clip(0, 1)
+
+            prediction: BoundingBoxPrediction = {
+                "bboxes": bbox,
+                "confidence": conf,
+                "labels": labels,
+                "scores": scores,
+            }
+            bounding_boxes.append(prediction)
+
+        return YOLOInferenceOutput(pred, bounding_boxes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         assert x.shape[-1] == x.shape[-2] == self.image_size, "Invalid image size"

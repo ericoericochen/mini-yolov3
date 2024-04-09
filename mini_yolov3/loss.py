@@ -155,13 +155,18 @@ def build_target(
 
         # get cell index
         xy = bbox[:, :2]
-        cell_ji = (xy // cell_size).int()  # (N, 2)
+        wh = bbox[:, 2:]
+        cell_ij = (xy // cell_size).int()  # (N, 2)
+
+        # get relative xy
+        xy = (xy - cell_ij * cell_size) / cell_size
+        bbox = torch.cat([xy, wh], dim=-1)
 
         # construct target value (c, x, y, w, h, classes)
         confidence = torch.ones(N, 1, device=device)  # (N, 1)
         class_labels = F.one_hot(label.long(), C).to(torch.float32)
         target_value = torch.cat([confidence, bbox, class_labels], dim=-1)  # (N, 5 + C)
 
-        target[i, :, cell_ji[:, 1], cell_ji[:, 0]] = target_value.T  # (5 + C, N)
+        target[i, :, cell_ij[:, 1], cell_ij[:, 0]] = target_value.T  # (5 + C, N)
 
     return target
