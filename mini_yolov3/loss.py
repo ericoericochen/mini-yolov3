@@ -61,9 +61,6 @@ class YOLOLoss(nn.Module):
             box_convert(obj_target_xywh, in_fmt="cxcywh", out_fmt="xyxy"),
         ).diag()  # (NBS^2,)
 
-        # print(iou)
-        # print(obj_pred_xywh, obj_target_xywh)
-
         # select the bounding box with the highest iou
         iou = iou.view(-1, self.B)  # (NS^2, B)
         max_iou, max_iou_idx = iou.max(dim=-1, keepdim=True)  # (NS^2, 1)
@@ -82,6 +79,10 @@ class YOLOLoss(nn.Module):
         obj_target_xy = obj_target_xywh[..., :2]
         obj_target_wh = obj_target_xywh[..., 2:]
 
+        assert (
+            obj_pred_xy.shape == obj_target_xy.shape
+            and obj_pred_wh.shape == obj_target_wh.shape
+        )
         coord_loss = self.lambda_coord * (
             self.mse_loss(obj_pred_xy, obj_target_xy)
             + self.mse_loss(obj_pred_wh.sqrt(), obj_target_wh.sqrt())
@@ -91,6 +92,7 @@ class YOLOLoss(nn.Module):
         obj_pred_conf = obj_pred_bboxes[..., 0][responsible_mask]
         obj_target_conf = obj_target_bboxes[..., 0][responsible_mask]
 
+        assert obj_pred_conf.shape == obj_target_conf.shape
         obj_conf_loss = self.mse_loss(obj_pred_conf * max_iou, obj_target_conf)
 
         # noobj loss
@@ -98,18 +100,20 @@ class YOLOLoss(nn.Module):
         noobj_pred_conf = pred_bboxes[..., 0][noobj_mask]
         noobj_target_conf = target_bboxes[..., 0][noobj_mask]
 
+        assert noobj_pred_conf.shape == noobj_target_conf.shape
         noobj_loss = self.lambda_noobj * self.mse_loss(
             noobj_pred_conf, noobj_target_conf
         )
 
         # class loss
-        pred_classes = pred_classes.view(-1, self.C)
-        target_classes = target_classes.view(-1, self.C)
+        pred_classes = pred_classes.contiguous().view(-1, self.C)
+        target_classes = target_classes.contiguous().view(-1, self.C)
 
         obj_mask = (target[..., 0] == 1).view(-1)
         obj_pred_classes = pred_classes[obj_mask]
         obj_target_classes = target_classes[obj_mask]
 
+        assert obj_pred_classes.shape == obj_target_classes.shape
         class_loss = self.mse_loss(obj_pred_classes, obj_target_classes)
 
         # total loss

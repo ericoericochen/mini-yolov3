@@ -160,8 +160,6 @@ class YOLO(nn.Module):
             bbox_xywh = bbox_xywh[keep_mask]
             bbox_conf = bbox_conf[keep_mask]
 
-            print(bbox_xywh.shape, bbox_conf.shape)
-
             pred_classes = (
                 pred_bbox[..., -self.C :].repeat(1, 1, self.B).view(-1, self.C)
             )
