@@ -95,7 +95,9 @@ class YOLO(nn.Module):
 
             feedforward.append(nn.Linear(in_channels, out_channels))
             feedforward.append(nn.LeakyReLU(0.1))
-            feedforward.append(nn.Dropout(self.dropout))
+
+            if i == 1:
+                feedforward.append(nn.Dropout(self.dropout))
 
         in_channels = self.dense_layers[-1]
         out_channels = self.S * self.S * (5 * self.B + self.C)

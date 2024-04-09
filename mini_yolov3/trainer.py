@@ -12,7 +12,7 @@ from .loss import YOLOLoss
 from .utils import draw_bounding_boxes
 from torchvision.ops import box_convert
 import torch.nn.functional as F
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR
 
 
 def get_device():
@@ -42,12 +42,18 @@ class Trainer:
         self.val_dataset = val_dataset
 
         self.train_loader = DataLoader(
-            train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            collate_fn=collate_fn,
         )
 
         if val_dataset:
             self.val_loader = DataLoader(
-                val_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn
+                val_dataset,
+                batch_size=batch_size,
+                shuffle=False,
+                collate_fn=collate_fn,
             )
 
         self.lr = lr
@@ -135,6 +141,12 @@ class Trainer:
             model.parameters(), lr=self.lr, weight_decay=self.weight_decay
         )
         scheduler = CosineAnnealingLR(optimizer, T_max=num_iters)
+        # scheduler = OneCycleLR(
+        #     optimizer,
+        #     steps_per_epoch=len(self.train_loader),
+        #     epochs=self.num_epochs,
+        #     max_lr=1e-2,
+        # )
 
         losses = []
         val_losses = []

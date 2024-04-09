@@ -88,9 +88,11 @@ class YOLOLoss(nn.Module):
         obj_pred_conf = obj_pred_bboxes[..., 0][responsible_mask]
         obj_target_conf = obj_target_bboxes[..., 0][responsible_mask]
 
-        obj_conf_loss = self.mse_loss(
-            obj_pred_conf * max_iou.squeeze(-1), obj_target_conf
-        )
+        obj_conf_loss = self.mse_loss(obj_pred_conf, max_iou.squeeze(-1))
+
+        # obj_conf_loss = self.mse_loss(
+        #     obj_pred_conf * max_iou.squeeze(-1), obj_target_conf
+        # )
 
         # noobj loss
         noobj_mask = ~obj_mask
