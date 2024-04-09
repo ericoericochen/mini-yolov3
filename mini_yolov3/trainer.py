@@ -110,8 +110,13 @@ class Trainer:
         os.makedirs(self.save_dir, exist_ok=True)
         checkpoints_dir = os.path.join(self.save_dir, "checkpoints")
         results_dir = os.path.join(self.save_dir, "results")
+        model_config_path = os.path.join(self.save_dir, "model_config.json")
         os.makedirs(checkpoints_dir, exist_ok=True)
         os.makedirs(results_dir, exist_ok=True)
+
+        # save model config
+        with open(model_config_path, "w") as f:
+            json.dump(self.model.config, f)
 
         loss_plot_path = os.path.join(self.save_dir, "loss.png")
 
@@ -182,13 +187,7 @@ class Trainer:
 
                     losses.append(loss.item())
 
-                    # plt.clf()
-                    # plt.title("Log Loss")
-                    # plt.semilogy(losses, label="Train Loss")
-                    # plt.savefig(loss_plot_path)
-
                 epoch_loss /= len(self.train_loader)
-                # losses.append(epoch_loss)
 
                 if has_val:
                     val_loss = calculate_loss(
@@ -219,6 +218,7 @@ class Trainer:
                 plt.legend()
                 plt.savefig(loss_plot_path)
 
+                # evaluate mAP
                 if (epoch + 1) % self.eval_every == 0:
                     tqdm.write(f"[INFO] Evals Epoch {epoch}")
                     epoch_eval_data = {}

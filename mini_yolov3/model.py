@@ -55,6 +55,7 @@ class YOLO(nn.Module):
         C: int,
         backbone: list,
         dense_layers: list[int],
+        dropout: float = 0.0,
     ):
         super().__init__()
         self.image_size = image_size
@@ -63,6 +64,7 @@ class YOLO(nn.Module):
         self.C = C
         self.backbone = backbone
         self.dense_layers = dense_layers
+        self.dropout = dropout
 
         assert len(backbone) > 0, "Backbone must have at least one layer"
         assert len(dense_layers) > 0, "Dense layers must have at least one layer"
@@ -93,6 +95,7 @@ class YOLO(nn.Module):
 
             feedforward.append(nn.Linear(in_channels, out_channels))
             feedforward.append(nn.LeakyReLU(0.1))
+            feedforward.append(nn.Dropout(self.dropout))
 
         in_channels = self.dense_layers[-1]
         out_channels = self.S * self.S * (5 * self.B + self.C)
