@@ -42,7 +42,7 @@ def main(args):
         augment_prob=args.augment_prob,
     )
 
-    train_dataset = Subset(train_dataset, range(0, 1))
+    train_dataset = Subset(train_dataset, range(0, 1000))
     # val_dataset = SVHNDataset(split="test", image_size=args.image_size)
 
     with open(args.model_config, "r") as f:
@@ -58,8 +58,7 @@ def main(args):
         num_epochs=args.num_epochs,
         weight_decay=args.weight_decay,
         lambda_coord=args.lambda_coord,
-        lambda_conf=args.lambda_conf,
-        lambda_cls=args.lambda_cls,
+        lambda_noobj=args.lambda_noobj,
         save_dir=args.save_dir,
         checkpoint_epoch=args.checkpoint_epoch,
         eval_every=args.eval_every,

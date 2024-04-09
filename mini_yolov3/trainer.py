@@ -182,10 +182,10 @@ class Trainer:
 
                     losses.append(loss.item())
 
-                    # plt.clf()
-                    # plt.title("Log Loss")
-                    # plt.semilogy(losses, label="Train Loss")
-                    # plt.savefig(loss_plot_path)
+                    plt.clf()
+                    plt.title("Log Loss")
+                    plt.semilogy(losses, label="Train Loss")
+                    plt.savefig(loss_plot_path)
 
                 epoch_loss /= len(self.train_loader)
                 # losses.append(epoch_loss)
@@ -201,7 +201,7 @@ class Trainer:
                 # else:
                 #     tqdm.write(f"[Epoch {epoch}] Loss: {epoch_loss}")
 
-                # tqdm.write(f"[Epoch {epoch}] Loss: {epoch_loss}")
+                tqdm.write(f"[Epoch {epoch}] Loss: {epoch_loss}")
 
                 # visualize object detection results on train and val
                 if self.log_detections:

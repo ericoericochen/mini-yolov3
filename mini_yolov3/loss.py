@@ -93,7 +93,9 @@ class YOLOLoss(nn.Module):
         obj_target_conf = obj_target_bboxes[..., 0][responsible_mask]
 
         assert obj_pred_conf.shape == obj_target_conf.shape
-        obj_conf_loss = self.mse_loss(obj_pred_conf * max_iou, obj_target_conf)
+        obj_conf_loss = self.mse_loss(
+            obj_pred_conf * max_iou.squeeze(-1), obj_target_conf
+        )
 
         # noobj loss
         noobj_mask = ~obj_mask
@@ -118,6 +120,10 @@ class YOLOLoss(nn.Module):
 
         # total loss
         loss = coord_loss + obj_conf_loss + noobj_loss + class_loss
+
+        import pdb
+
+        pdb.set_trace()
 
         return loss, {
             "coord_loss": coord_loss.item(),
