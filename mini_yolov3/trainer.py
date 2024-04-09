@@ -129,7 +129,7 @@ class Trainer:
         optimizer = torch.optim.Adam(
             model.parameters(), lr=self.lr, weight_decay=self.weight_decay
         )
-        # scheduler = CosineAnnealingLR(optimizer, T_max=num_iters)
+        scheduler = CosineAnnealingLR(optimizer, T_max=num_iters)
 
         losses = []
         val_losses = []
@@ -171,51 +171,53 @@ class Trainer:
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
-                    # scheduler.step()
+                    scheduler.step()
 
                     pbar.update(1)
                     pbar.set_postfix(
                         loss=loss.item(),
                         **loss_breakdown,
-                        # lr=scheduler.get_lr(),
+                        lr=scheduler.get_lr(),
                     )
 
                     losses.append(loss.item())
 
-                    plt.clf()
-                    plt.title("Log Loss")
-                    plt.semilogy(losses, label="Train Loss")
-                    plt.savefig(loss_plot_path)
+                    # plt.clf()
+                    # plt.title("Log Loss")
+                    # plt.semilogy(losses, label="Train Loss")
+                    # plt.savefig(loss_plot_path)
 
                 epoch_loss /= len(self.train_loader)
                 # losses.append(epoch_loss)
 
-                # if has_val:
-                #     val_loss = calculate_loss(
-                #         model, self.val_loader, criterion, device=self.device
-                #     )
-                #     val_losses.append(val_loss)
-                #     tqdm.write(
-                #         f"[Epoch {epoch}] Train Loss: {epoch_loss} | Val Loss: {val_loss}"
-                #     )
-                # else:
-                #     tqdm.write(f"[Epoch {epoch}] Loss: {epoch_loss}")
-
-                tqdm.write(f"[Epoch {epoch}] Loss: {epoch_loss}")
+                if has_val:
+                    val_loss = calculate_loss(
+                        model, self.val_loader, criterion, device=self.device
+                    )
+                    val_losses.append(val_loss)
+                    tqdm.write(
+                        f"[Epoch {epoch}] Train Loss: {epoch_loss} | Val Loss: {val_loss}"
+                    )
+                else:
+                    tqdm.write(f"[Epoch {epoch}] Train Loss: {epoch_loss}")
 
                 # visualize object detection results on train and val
                 if self.log_detections:
                     self.record_object_detection_results(results_dir, epoch)
 
                 # save loss plot
-                # plt.clf()
-                # plt.title("Log Loss")
-                # plt.semilogy(losses, label="Train Loss")
-                # if has_val:
-                #     plt.semilogy(val_losses, label="Val Loss")
+                plt.clf()
+                plt.title("Log Loss")
+                plt.semilogy(losses, label="Train Loss")
+                if has_val:
+                    plt.semilogy(
+                        [(i + 1) * len(self.train_loader) for i in range(epoch + 1)],
+                        val_losses,
+                        label="Val Loss",
+                    )
 
-                # plt.legend()
-                # plt.savefig(loss_plot_path)
+                plt.legend()
+                plt.savefig(loss_plot_path)
 
                 if (epoch + 1) % self.eval_every == 0:
                     tqdm.write(f"[INFO] Evals Epoch {epoch}")

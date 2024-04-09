@@ -141,7 +141,9 @@ class YOLO(nn.Module):
 
             # scale bounding box pred to global coordinates
             x_offsets, y_offsets = torch.meshgrid(
-                torch.arange(self.S), torch.arange(self.S), indexing="xy"
+                torch.arange(self.S, device=pred_bbox.device),
+                torch.arange(self.S, device=pred_bbox.device),
+                indexing="xy",
             )
 
             bbox_x = (bbox_x + x_offsets.unsqueeze(-1)) * cell_size

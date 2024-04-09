@@ -79,10 +79,6 @@ class YOLOLoss(nn.Module):
         obj_target_xy = obj_target_xywh[..., :2]
         obj_target_wh = obj_target_xywh[..., 2:]
 
-        assert (
-            obj_pred_xy.shape == obj_target_xy.shape
-            and obj_pred_wh.shape == obj_target_wh.shape
-        )
         coord_loss = self.lambda_coord * (
             self.mse_loss(obj_pred_xy, obj_target_xy)
             + self.mse_loss(obj_pred_wh.sqrt(), obj_target_wh.sqrt())
@@ -92,7 +88,6 @@ class YOLOLoss(nn.Module):
         obj_pred_conf = obj_pred_bboxes[..., 0][responsible_mask]
         obj_target_conf = obj_target_bboxes[..., 0][responsible_mask]
 
-        assert obj_pred_conf.shape == obj_target_conf.shape
         obj_conf_loss = self.mse_loss(
             obj_pred_conf * max_iou.squeeze(-1), obj_target_conf
         )
@@ -102,7 +97,6 @@ class YOLOLoss(nn.Module):
         noobj_pred_conf = pred_bboxes[..., 0][noobj_mask]
         noobj_target_conf = target_bboxes[..., 0][noobj_mask]
 
-        assert noobj_pred_conf.shape == noobj_target_conf.shape
         noobj_loss = self.lambda_noobj * self.mse_loss(
             noobj_pred_conf, noobj_target_conf
         )
@@ -115,15 +109,10 @@ class YOLOLoss(nn.Module):
         obj_pred_classes = pred_classes[obj_mask]
         obj_target_classes = target_classes[obj_mask]
 
-        assert obj_pred_classes.shape == obj_target_classes.shape
         class_loss = self.mse_loss(obj_pred_classes, obj_target_classes)
 
         # total loss
         loss = coord_loss + obj_conf_loss + noobj_loss + class_loss
-
-        import pdb
-
-        pdb.set_trace()
 
         return loss, {
             "coord_loss": coord_loss.item(),
@@ -177,6 +166,9 @@ def build_target(
         class_labels = F.one_hot(label.long(), C).to(torch.float32)
         target_value = torch.cat([confidence, bbox, class_labels], dim=-1)  # (N, 5 + C)
 
-        target[i, :, cell_ij[:, 1], cell_ij[:, 0]] = target_value.T  # (5 + C, N)
+        try:
+            target[i, :, cell_ij[:, 1], cell_ij[:, 0]] = target_value.T  # (5 + C, N)
+        except:
+            continue  # invalid bbox
 
     return target
