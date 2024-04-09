@@ -1,35 +1,15 @@
 {
-  "num_classes": 10,
   "image_size": 64,
-  "backbone_layers": [
-    {
-      "type": "Downsample",
-      "in_channels": 3,
-      "out_channels": 16
-    },
-    {
-      "type": "ResidualBlock",
-      "num_blocks": 4,
-      "channels": 16
-    },
-    {
-      "type": "Downsample",
-      "in_channels": 16,
-      "out_channels": 32
-    },
-    {
-      "type": "ResidualBlock",
-      "num_blocks": 8,
-      "channels": 32
-    },
-    {
-      "type": "Downsample",
-      "in_channels": 32,
-      "out_channels": 64,
-      "with_avgpool": true
-    }
+  "grid_size": 7,
+  "predicted_bounding_boxes": 2,
+  "num_classes": 10,
+  "backbone": [
+    ["Conv", [3, 16, 3, 2, 1]],
+    ["MaxPool", [2, 2]],
+    ["Conv", [16, 32, 3, 1, 1]],
+    ["MaxPool", [2, 2]],
+    ["Conv", [32, 64, 3, 1, 1]],
+    ["Conv", [64, 64, 1, 1]]
   ],
-  "anchors": [[0.15, 0.73]],
-  "num_anchors_per_scale": 1,
-  "num_detection_layers": 1
+  "dense_layers": [4096, 2048]
 }
