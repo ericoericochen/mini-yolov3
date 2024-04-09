@@ -1,1 +1,1 @@
-from .model import MiniYoloV3
+from .model import YOLO

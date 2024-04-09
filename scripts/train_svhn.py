@@ -6,7 +6,7 @@ import torch
 sys.path.append("../")
 
 from mini_yolov3.dataset import SVHNDataset
-from mini_yolov3.model import MiniYoloV3
+from mini_yolov3.model import YOLO
 from mini_yolov3.trainer import Trainer
 from torch.utils.data import Subset
 
@@ -19,9 +19,8 @@ def parse_args():
     parser.add_argument("--num_epochs", type=int, default=10)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--weight_decay", type=float, default=0.0)
-    parser.add_argument("--lambda_coord", type=float, default=0.05)
-    parser.add_argument("--lambda_conf", type=float, default=1.0)
-    parser.add_argument("--lambda_cls", type=float, default=0.5)
+    parser.add_argument("--lambda_coord", type=float, default=5.0)
+    parser.add_argument("--lambda_noobj", type=float, default=0.5)
     parser.add_argument("--data_augment", action="store_true", default=False)
     parser.add_argument("--augment_prob", type=float, default=0.25)
     parser.add_argument("--checkpoint_epoch", type=int, default=1)
@@ -49,7 +48,7 @@ def main(args):
     with open(args.model_config, "r") as f:
         model_config = json.load(f)
 
-    model = MiniYoloV3(**model_config)
+    model = YOLO(**model_config)
     trainer = Trainer(
         model=model,
         train_dataset=train_dataset,

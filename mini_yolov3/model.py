@@ -27,20 +27,24 @@ class ConvLayer(nn.Module):
 
 
 class YOLO(nn.Module):
+    """
+    YOLOv1 Implementation https://arxiv.org/abs/1506.02640
+    """
+
     def __init__(
         self,
         image_size: int,
-        grid_size: int,
-        predicted_bounding_boxes: int,
-        num_classes: int,
+        S: int,
+        B: int,
+        C: int,
         backbone: list,
         dense_layers: list[int],
     ):
         super().__init__()
         self.image_size = image_size
-        self.grid_size = grid_size
-        self.predicted_bounding_boxes = predicted_bounding_boxes
-        self.num_classes = num_classes
+        self.S = S
+        self.B = B
+        self.C = C
         self.backbone = backbone
         self.dense_layers = dense_layers
 
@@ -75,9 +79,7 @@ class YOLO(nn.Module):
             feedforward.append(nn.LeakyReLU(0.1))
 
         in_channels = self.dense_layers[-1]
-        out_channels = self.grid_size * self.grid_size(
-            5 * self.predicted_bounding_boxes + self.num_classes
-        )
+        out_channels = self.S * self.S * (5 * self.B + self.C)
 
         feedforward.append(nn.Linear(in_channels, out_channels))
 
@@ -87,24 +89,33 @@ class YOLO(nn.Module):
     def config(self):
         return {
             "image_size": self.image_size,
-            "grid_size": self.grid_size,
-            "predicted_bounding_boxes": self.predicted_bounding_boxes,
-            "num_classes": self.num_classes,
+            "S": self.S,
+            "B": self.B,
+            "C": self.C,
             "backbone": self.backbone,
             "dense_layers": self.dense_layers,
         }
 
+    @torch.no_grad()
+    def inference(
+        self,
+        images: torch.Tensor,
+        confidence_threshold: float = 0.5,
+        iou_threshold: float = 0.5,
+    ):
+        pass
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        assert x.shape[1] == x.shape[2] == self.image_size, "Invalid image size"
+        assert x.shape[-1] == x.shape[-2] == self.image_size, "Invalid image size"
 
         x = self.backbone_layers(x)
         x = x.view(x.size(0), -1)  # flatten
         x = self.feedforward(x)
         x = x.view(
             -1,
-            self.grid_size,
-            self.grid_size,
-            5 * self.predicted_bounding_boxes + self.num_classes,
-        )
+            5 * self.B + self.C,
+            self.S,
+            self.S,
+        ).abs()
 
         return x

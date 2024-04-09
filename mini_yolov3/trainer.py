@@ -1,5 +1,5 @@
 import torch
-from .model import MiniYoloV3
+from .model import YOLO
 from .dataset import ObjectDetectionDataset, collate_fn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -22,16 +22,15 @@ def get_device():
 class Trainer:
     def __init__(
         self,
-        model: MiniYoloV3,
+        model: YOLO,
         train_dataset: ObjectDetectionDataset,
         val_dataset: ObjectDetectionDataset = None,
         lr: float = 3e-4,
         weight_decay: float = 0.0,
         batch_size: int = 32,
         num_epochs: int = 10,
-        lambda_coord: float = 0.05,
-        lambda_conf: float = 1.0,
-        lambda_cls: float = 0.5,
+        lambda_coord: float = 5.0,
+        lambda_noobj: float = 0.5,
         log_detections: bool = True,
         save_dir: str = "./yolo_checkpoints",
         checkpoint_epoch: int = 1,
@@ -43,7 +42,7 @@ class Trainer:
         self.val_dataset = val_dataset
 
         self.train_loader = DataLoader(
-            train_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn
+            train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn
         )
 
         if val_dataset:
@@ -55,8 +54,7 @@ class Trainer:
         self.weight_decay = weight_decay
         self.num_epochs = num_epochs
         self.lambda_coord = lambda_coord
-        self.lambda_conf = lambda_conf
-        self.lambda_cls = lambda_cls
+        self.lambda_noobj = lambda_noobj
         self.save_dir = save_dir
         self.log_detections = log_detections
         self.checkpoint_epoch = checkpoint_epoch
@@ -137,11 +135,11 @@ class Trainer:
         val_losses = []
         has_val = self.val_dataset is not None
         criterion = YOLOLoss(
-            num_classes=self.model.num_classes,
-            anchors=self.model.anchors,
+            S=model.S,
+            B=model.B,
+            C=model.C,
             lambda_coord=self.lambda_coord,
-            lambda_conf=self.lambda_conf,
-            lambda_cls=self.lambda_cls,
+            lambda_noobj=self.lambda_noobj,
         )
 
         pp = pprint.PrettyPrinter()
@@ -178,16 +176,16 @@ class Trainer:
                     pbar.update(1)
                     pbar.set_postfix(
                         loss=loss.item(),
-                        **{k: v.item() for k, v in loss_breakdown.items()},
+                        **loss_breakdown,
                         # lr=scheduler.get_lr(),
                     )
 
                     losses.append(loss.item())
 
-                    plt.clf()
-                    plt.title("Log Loss")
-                    plt.semilogy(losses, label="Train Loss")
-                    plt.savefig(loss_plot_path)
+                    # plt.clf()
+                    # plt.title("Log Loss")
+                    # plt.semilogy(losses, label="Train Loss")
+                    # plt.savefig(loss_plot_path)
 
                 epoch_loss /= len(self.train_loader)
                 # losses.append(epoch_loss)

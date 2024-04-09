@@ -1,4 +1,4 @@
-from .model import MiniYoloV3
+from .model import YOLO
 from torch.utils.data import DataLoader
 from torchmetrics.detection import MeanAveragePrecision
 from torchvision.ops import box_convert
@@ -18,7 +18,7 @@ def serialize_mAP(mAP: dict):
 
 
 def calculate_loss(
-    model: MiniYoloV3, dataloader: DataLoader, criterion: YOLOLoss, device: str = "cpu"
+    model: YOLO, dataloader: DataLoader, criterion: YOLOLoss, device: str = "cpu"
 ):
     model.eval()
     total_loss = 0
@@ -41,7 +41,7 @@ def calculate_loss(
     return total_loss / len(dataloader)
 
 
-def calculate_mAP(model: MiniYoloV3, dataloader: DataLoader, device: str = "cpu"):
+def calculate_mAP(model: YOLO, dataloader: DataLoader, device: str = "cpu"):
     metric = MeanAveragePrecision(box_format="cxcywh", iou_type="bbox")
 
     model.eval()
