@@ -115,6 +115,7 @@ class YOLO(nn.Module):
             "C": self.C,
             "backbone": self.backbone,
             "dense_layers": self.dense_layers,
+            "dropout": self.dropout,
         }
 
     @torch.no_grad()

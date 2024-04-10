@@ -117,8 +117,23 @@ class Trainer:
         checkpoints_dir = os.path.join(self.save_dir, "checkpoints")
         results_dir = os.path.join(self.save_dir, "results")
         model_config_path = os.path.join(self.save_dir, "model_config.json")
+        train_config_path = os.path.join(self.save_dir, "train_config.json")
         os.makedirs(checkpoints_dir, exist_ok=True)
         os.makedirs(results_dir, exist_ok=True)
+
+        # save train config
+        with open(train_config_path, "w") as f:
+            json.dump(
+                {
+                    "lr": self.lr,
+                    "weight_decay": self.weight_decay,
+                    "batch_size": self.train_loader.batch_size,
+                    "num_epochs": self.num_epochs,
+                    "lambda_coord": self.lambda_coord,
+                    "lambda_noobj": self.lambda_noobj,
+                },
+                f,
+            )
 
         # save model config
         with open(model_config_path, "w") as f:

@@ -34,6 +34,7 @@ def main(args):
     torch.manual_seed(0)
 
     print("[INFO] Training Mini Yolo V3 on SVHN...")
+    print(args)
 
     train_dataset = SVHNDataset(
         split="train",
@@ -42,7 +43,16 @@ def main(args):
         augment_prob=args.augment_prob,
     )
 
-    # train_dataset = Subset(train_dataset, range(0, 5000))
+    print(len(train_dataset))
+
+    # save args
+    import os
+
+    os.makedirs(args.save_dir, exist_ok=True)
+    with open(f"{args.save_dir}/args.json", "w") as f:
+        json.dump(vars(args), f)
+
+    # train_dataset = Subset(train_dataset, range(0, 15000))
     val_dataset = SVHNDataset(split="test", image_size=args.image_size)
 
     with open(args.model_config, "r") as f:
