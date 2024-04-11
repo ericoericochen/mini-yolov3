@@ -12,7 +12,6 @@ from .loss import YOLOLoss
 from .utils import draw_bounding_boxes
 from torchvision.ops import box_convert
 import torch.nn.functional as F
-from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR
 
 
 def get_device():
@@ -155,13 +154,6 @@ class Trainer:
         optimizer = torch.optim.Adam(
             model.parameters(), lr=self.lr, weight_decay=self.weight_decay
         )
-        scheduler = CosineAnnealingLR(optimizer, T_max=num_iters)
-        # scheduler = OneCycleLR(
-        #     optimizer,
-        #     steps_per_epoch=len(self.train_loader),
-        #     epochs=self.num_epochs,
-        #     max_lr=1e-2,
-        # )
 
         losses = []
         val_losses = []
@@ -203,16 +195,28 @@ class Trainer:
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
-                    scheduler.step()
+                    # scheduler.step()
 
                     pbar.update(1)
                     pbar.set_postfix(
                         loss=loss.item(),
                         **loss_breakdown,
-                        lr=scheduler.get_lr(),
+                        # lr=scheduler.get_lr(),
                     )
 
                     losses.append(loss.item())
+
+                    plt.clf()
+                    plt.title("Log Loss")
+                    plt.semilogy(losses, label="Train Loss")
+                    if has_val:
+                        plt.semilogy(
+                            [(i + 1) * len(self.train_loader) for i in range(epoch)],
+                            val_losses,
+                            label="Val Loss",
+                        )
+                    plt.legend()
+                    plt.savefig(loss_plot_path)
 
                 epoch_loss /= len(self.train_loader)
 

@@ -11,7 +11,7 @@ import random
 class SVHNDataset(ObjectDetectionDataset):
     def __init__(
         self,
-        split: Literal["train", "test"] = "train",
+        split: Literal["train", "test", "extra"] = "train",
         image_size: int = 32,
         normalize_bbox: bool = True,
         data_augment: bool = False,

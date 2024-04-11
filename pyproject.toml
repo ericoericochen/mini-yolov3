@@ -7,7 +7,6 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-torch = "^2.2.2"
 torchvision = "^0.17.2"
 datasets = "^2.18.0"
 ipykernel = "^6.29.4"
