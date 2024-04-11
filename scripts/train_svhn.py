@@ -8,7 +8,7 @@ sys.path.append("../")
 from mini_yolov3.dataset import SVHNDataset
 from mini_yolov3.model import YOLO
 from mini_yolov3.trainer import Trainer
-from torch.utils.data import Subset
+from torch.utils.data import ConcatDataset, Subset
 
 
 def parse_args():
@@ -32,6 +32,7 @@ def parse_args():
 
 def main(args):
     torch.manual_seed(0)
+    torch.set_num_threads(10)
 
     print("[INFO] Training Mini Yolo V3 on SVHN...")
     print(args)
@@ -41,6 +42,17 @@ def main(args):
         image_size=args.image_size,
         data_augment=args.data_augment,
         augment_prob=args.augment_prob,
+    )
+
+    extra_dataset = SVHNDataset(
+        split="extra",
+        image_size=args.image_size,
+        data_augment=args.data_augment,
+        augment_prob=args.augment_prob,
+    )
+
+    train_dataset = ConcatDataset(
+        [train_dataset, Subset(extra_dataset, range(0, 60000 - len(train_dataset)))]
     )
 
     print(len(train_dataset))
@@ -72,6 +84,7 @@ def main(args):
         save_dir=args.save_dir,
         checkpoint_epoch=args.checkpoint_epoch,
         eval_every=args.eval_every,
+        # device=torch.device("mps"),
         device="cpu",
     )
 
