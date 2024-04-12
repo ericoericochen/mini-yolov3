@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 
 
-def draw_bounding_boxes_new(
+def draw_bounding_boxes(
     image: Union[Image.Image, torch.Tensor],
     bboxes: torch.Tensor,
     labels: Union[torch.Tensor, list[str]],
@@ -53,7 +53,7 @@ def draw_bounding_boxes_new(
             (x1, y1),
             (x2, y2),
             (0, 255, 0),
-            2,
+            1,
         )
 
         label_text = f"{labels[i]} | {scores[i]}"
@@ -83,42 +83,6 @@ def draw_bounding_boxes_new(
     image = Image.fromarray(image)
 
     return image
-
-
-def draw_bounding_boxes(
-    image: Image.Image,
-    bboxes: torch.Tensor,
-    labels: Union[torch.Tensor, list[str]] = None,
-):
-    """
-    Draw bounding boxes on an image with labels
-
-    Params:
-        - image: image to draw bounding boxes on
-        - bbox: normalized bbox between [0, 1] (B, 4), MUST be in xyxy format
-        - labels: list of labels for each bounding box
-        - format: format of the bounding box, either "coco" | "xyxy" | "xywh"
-    """
-    if isinstance(labels, torch.Tensor):
-        assert len(labels.shape) == 1
-        labels = [str(label) for label in labels.tolist()]
-
-    # convert image to be in range [0, 255]
-    image = (image * 255).to(torch.uint8)
-
-    # rescale bbox to image size
-    w, h = image.shape[2], image.shape[1]
-
-    bboxes = bboxes.clone()
-    bboxes[:, [0, 2]] *= w  # scale x coords
-    bboxes[:, [1, 3]] *= h  # scale y coords
-
-    bounding_box_image = torchvision.utils.draw_bounding_boxes(
-        image, boxes=bboxes, labels=labels
-    )
-    pil_image = torchvision.transforms.ToPILImage()(bounding_box_image)
-
-    return pil_image
 
 
 def to_tensor(image: Image.Image):

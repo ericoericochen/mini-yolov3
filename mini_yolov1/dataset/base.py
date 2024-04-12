@@ -21,9 +21,19 @@ class ObjectDetectionDataset(Dataset):
 
 
 def collate_fn(batch):
+    # import time
+
+    # a = time.time()
+
     images = torch.stack([item["image"] for item in batch], dim=0)
     bboxes = [item["bbox"] for item in batch]
     labels = [item["label"] for item in batch]
+
+    # b = time.time()
+
+    # print(f"Collate time: {b - a}")
+
+    # raise RuntimeError
 
     return {
         "images": images,

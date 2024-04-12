@@ -63,7 +63,7 @@ class OxfordIIITPetDataset(ObjectDetectionDataset):
                         bbox = box_convert(bbox, in_fmt="xyxy", out_fmt="xywh")
 
                         index_data = {
-                            "image": image_path,
+                            "image": image,
                             "bbox": bbox,
                             "label": label,
                         }
@@ -92,7 +92,8 @@ class OxfordIIITPetDataset(ObjectDetectionDataset):
 
         i = i.item()
         data = self.index[i]
-        image = Image.open(data["image"])
+        image = data["image"]
+
         if self.transform:
             image = self.transform(image)
 
