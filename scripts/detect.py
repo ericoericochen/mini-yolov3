@@ -16,8 +16,8 @@ from torchvision.ops import box_convert
 import matplotlib.pyplot as plt
 
 sys.path.append("../")
-from mini_yolov3.model import YOLO
-from mini_yolov3.utils import to_tensor, draw_bounding_boxes
+from mini_yolov1.model import YOLO
+from mini_yolov1.utils import to_tensor, draw_bounding_boxes
 
 
 def parse_args():

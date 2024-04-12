@@ -5,9 +5,9 @@ import torch
 
 sys.path.append("../")
 
-from mini_yolov3.dataset import SVHNDataset
-from mini_yolov3.model import YOLO
-from mini_yolov3.trainer import Trainer
+from mini_yolov1.dataset import SVHNDataset
+from mini_yolov1.model import YOLO
+from mini_yolov1.trainer import Trainer
 from torch.utils.data import ConcatDataset, Subset
 
 

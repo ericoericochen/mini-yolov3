@@ -7,7 +7,7 @@ import torch
 class ObjectDetectionData(TypedDict):
     image: Image.Image
     bbox: torch.Tensor
-    labels: torch.Tensor
+    label: torch.Tensor
 
 
 class ObjectDetectionDataset(Dataset):
@@ -16,12 +16,6 @@ class ObjectDetectionDataset(Dataset):
     format (x, y, w, h), and corresponding labels for each box.
     """
 
-    def __init__(self):
-        pass
-
-    def __len__(self):
-        pass
-
     def __getitem__(self, idx: int) -> ObjectDetectionData:
         pass
 
@@ -29,7 +23,7 @@ class ObjectDetectionDataset(Dataset):
 def collate_fn(batch):
     images = torch.stack([item["image"] for item in batch], dim=0)
     bboxes = [item["bbox"] for item in batch]
-    labels = [item["labels"] for item in batch]
+    labels = [item["label"] for item in batch]
 
     return {
         "images": images,
