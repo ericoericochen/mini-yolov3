@@ -8,6 +8,8 @@ from PIL import Image
 
 
 class OxfordIIITPetDataset(ObjectDetectionDataset):
+    LABELS = ["cat", "dog"]
+
     def __init__(
         self, root: str, split: Literal["trainval", "test"] = "trainval", transform=None
     ):
