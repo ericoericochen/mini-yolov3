@@ -11,6 +11,3 @@ poetry run python3 train_svhn.py \
     --eval_every=5 \
     --checkpoint_epoch=10 \
     --save_dir=../experiments/lion_60k \
-
-    # --save_dir=../checkpoints/svhn_experiment_small_wd \
-    # --save_dir=../checkpoints/svhn_experiment_big \

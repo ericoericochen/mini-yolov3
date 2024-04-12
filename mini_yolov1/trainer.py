@@ -155,8 +155,11 @@ class Trainer:
             model.parameters(), lr=self.lr, weight_decay=self.weight_decay
         )
 
-        losses = []
+        train_losses = []
         val_losses = []
+        train_mAPs = []
+        val_mAPs = []
+
         has_val = self.val_dataset is not None
         criterion = YOLOLoss(
             S=model.S,
@@ -195,47 +198,45 @@ class Trainer:
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
-                    # scheduler.step()
 
                     pbar.update(1)
                     pbar.set_postfix(
                         loss=loss.item(),
                         **loss_breakdown,
-                        # lr=scheduler.get_lr(),
                     )
 
-                    losses.append(loss.item())
+                    train_losses.append(loss.item())
 
                 epoch_loss /= len(self.train_loader)
 
-                # if has_val:
-                #     val_loss = calculate_loss(
-                #         model, self.val_loader, criterion, device=self.device
-                #     )
-                #     val_losses.append(val_loss)
-                #     tqdm.write(
-                #         f"[Epoch {epoch}] Train Loss: {epoch_loss} | Val Loss: {val_loss}"
-                #     )
-                # else:
-                #     tqdm.write(f"[Epoch {epoch}] Train Loss: {epoch_loss}")
+                if has_val:
+                    val_loss = calculate_loss(
+                        model, self.val_loader, criterion, device=self.device
+                    )
+                    val_losses.append(val_loss)
+                    tqdm.write(
+                        f"[Epoch {epoch}] Train Loss: {epoch_loss} | Val Loss: {val_loss}"
+                    )
+                else:
+                    tqdm.write(f"[Epoch {epoch}] Train Loss: {epoch_loss}")
 
                 # visualize object detection results on train and val
                 if self.log_detections:
                     self.record_object_detection_results(results_dir, epoch)
 
                 # save loss plot
-                # plt.clf()
-                # plt.title("Log Loss")
-                # plt.semilogy(losses, label="Train Loss")
-                # if has_val:
-                #     plt.semilogy(
-                #         [(i + 1) * len(self.train_loader) for i in range(epoch + 1)],
-                #         val_losses,
-                #         label="Val Loss",
-                #     )
+                plt.clf()
+                plt.title("Log Loss")
+                plt.semilogy(train_losses, label="Train Loss")
+                if has_val:
+                    plt.semilogy(
+                        [(i + 1) * len(self.train_loader) for i in range(epoch + 1)],
+                        val_losses,
+                        label="Val Loss",
+                    )
 
-                # plt.legend()
-                # plt.savefig(loss_plot_path)
+                plt.legend()
+                plt.savefig(loss_plot_path)
 
                 # evaluate mAP
                 if (epoch + 1) % self.eval_every == 0:
@@ -247,6 +248,7 @@ class Trainer:
                         model, self.train_loader, device=self.device
                     )
                     epoch_eval_data["train_mAP"] = train_mAP
+                    train_mAPs.append(train_mAP["map_50"])
 
                     tqdm.write(f"Train mAP: {pp.pformat(train_mAP)}")
 
@@ -256,6 +258,7 @@ class Trainer:
                             model, self.val_loader, device=self.device
                         )
                         epoch_eval_data["val_mAP"] = val_mAP
+                        val_mAPs.append(val_mAP["map_50"])
 
                         tqdm.write(f"Val mAP: {pp.pformat(val_mAP)}")
 
@@ -263,11 +266,26 @@ class Trainer:
                     with open(evals_path, "w") as f:
                         json.dump(evals_json, f)
 
+                    plt.clf()
+                    plt.title("mAP")
+                    plt.plot(
+                        [i * self.eval_every for i in range(len(train_mAPs))],
+                        train_mAPs,
+                        label="Train mAP",
+                    )
+
+                    if has_val:
+                        plt.plot(
+                            [i * self.eval_every for i in range(len(val_mAPs))],
+                            val_mAPs,
+                            label="Val mAP",
+                        )
+
                 if (epoch + 1) % self.checkpoint_epoch == 0:
                     weights_path = os.path.join(checkpoints_dir, f"weights_{epoch}.pt")
                     torch.save(model.state_dict(), weights_path)
 
-        # weights_path = os.path.join(self.save_dir, f"weights.pt")
-        # torch.save(model.state_dict(), weights_path)
+        weights_path = os.path.join(self.save_dir, f"weights.pt")
+        torch.save(model.state_dict(), weights_path)
 
-        return losses
+        return train_losses
