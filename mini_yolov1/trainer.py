@@ -9,7 +9,7 @@ import json
 import pprint
 import matplotlib.pyplot as plt
 from .loss import YOLOLoss
-from .utils import draw_bounding_boxes
+from .utils import draw_bounding_boxes, to_tensor
 from torchvision.ops import box_convert
 import torch.nn.functional as F
 
@@ -47,7 +47,7 @@ class Trainer:
             collate_fn=collate_fn,
         )
 
-        if val_dataset:
+        if val_dataset is not None:
             self.val_loader = DataLoader(
                 val_dataset,
                 batch_size=batch_size,
@@ -69,46 +69,59 @@ class Trainer:
     def record_object_detection_results(self, results_dir: str, epoch: int):
         self.model.eval()
 
-        train_save_path = os.path.join(results_dir, f"train_{epoch}.png")
-        train_image = self.train_dataset[0]["image"].unsqueeze(0).to(self.device)
-        bounding_boxes = self.model.inference(train_image).bboxes
-        train_image = F.interpolate(train_image, size=(128, 128))
+        for i in range(4):
+            train_save_path = os.path.join(results_dir, f"train_{epoch}_{i}.png")
+            train_image = self.train_dataset.get_original_image(i)
+            train_image_tensor = (
+                self.train_dataset[i]["image"].unsqueeze(0).to(self.device)
+            )
 
-        train_bbox = draw_bounding_boxes(
-            train_image[0].cpu(),
-            box_convert(
-                bounding_boxes[0]["bboxes"],
-                in_fmt="cxcywh",
-                out_fmt="xyxy",
-            ),
-            bounding_boxes[0]["labels"],
-        )
+            bounding_boxes = self.model.inference(train_image_tensor).bboxes
 
-        plt.clf()
-        plt.imshow(train_bbox)
-        plt.savefig(train_save_path)
-
-        if self.val_dataset:
-            val_save_path = os.path.join(results_dir, f"val_{epoch}.png")
-            val_image = self.val_dataset[0]["image"].unsqueeze(0).to(self.device)
-            bounding_boxes = self.model.inference(val_image).bboxes
-            val_image = F.interpolate(val_image, size=(128, 128))
-
-            val_bbox = draw_bounding_boxes(
-                val_image[0].cpu(),
+            train_bbox = draw_bounding_boxes(
+                train_image,
                 box_convert(
                     bounding_boxes[0]["bboxes"],
                     in_fmt="cxcywh",
                     out_fmt="xyxy",
                 ),
-                bounding_boxes[0]["labels"],
+                [
+                    self.train_dataset.LABELS[label.item()]
+                    for label in bounding_boxes[0]["labels"]
+                ],
+                scores=bounding_boxes[0]["scores"],
             )
 
             plt.clf()
-            plt.imshow(val_bbox)
-            plt.savefig(val_save_path)
+            plt.imshow(train_bbox)
+            plt.savefig(train_save_path)
 
-        # raise RuntimeError
+        if self.val_dataset:
+            for i in range(4):
+                val_save_path = os.path.join(results_dir, f"val_{epoch}_{i}.png")
+                val_image = self.val_dataset.get_original_image(i)
+                val_image_tensor = (
+                    self.val_dataset[i]["image"].unsqueeze(0).to(self.device)
+                )
+                bounding_boxes = self.model.inference(val_image_tensor).bboxes
+
+                val_bbox = draw_bounding_boxes(
+                    val_image,
+                    box_convert(
+                        bounding_boxes[0]["bboxes"],
+                        in_fmt="cxcywh",
+                        out_fmt="xyxy",
+                    ),
+                    [
+                        self.train_dataset.LABELS[label]
+                        for label in bounding_boxes[0]["labels"]
+                    ],
+                    scores=bounding_boxes[0]["scores"],
+                )
+
+                plt.clf()
+                plt.imshow(val_bbox)
+                plt.savefig(val_save_path)
 
     def train(self):
         # make save dir
@@ -280,6 +293,7 @@ class Trainer:
                             val_mAPs,
                             label="Val mAP",
                         )
+                    plt.savefig(os.path.join(self.save_dir, "mAP.png"))
 
                 if (epoch + 1) % self.checkpoint_epoch == 0:
                     weights_path = os.path.join(checkpoints_dir, f"weights_{epoch}.pt")

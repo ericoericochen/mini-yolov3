@@ -2,6 +2,7 @@ from torch.utils.data import Dataset
 from typing import TypedDict
 from PIL import Image
 import torch
+from torchvision import transforms as v2
 
 
 class ObjectDetectionData(TypedDict):
@@ -16,24 +17,29 @@ class ObjectDetectionDataset(Dataset):
     format (x, y, w, h), and corresponding labels for each box.
     """
 
+    LABELS = []
+
     def __getitem__(self, idx: int) -> ObjectDetectionData:
         pass
 
+    def get_original_image(self, idx: int) -> Image.Image:
+        pass
+
+
+class RandomColorJitter:
+    def __init__(self, prob: float = 0.5):
+        self.prob = prob
+
+    def __call__(self, image: Image.Image) -> Image.Image:
+        if torch.rand(1).item() < self.prob:
+            return v2.ColorJitter()(image)
+        return image
+
 
 def collate_fn(batch):
-    # import time
-
-    # a = time.time()
-
     images = torch.stack([item["image"] for item in batch], dim=0)
     bboxes = [item["bbox"] for item in batch]
     labels = [item["label"] for item in batch]
-
-    # b = time.time()
-
-    # print(f"Collate time: {b - a}")
-
-    # raise RuntimeError
 
     return {
         "images": images,

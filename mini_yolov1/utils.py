@@ -38,8 +38,6 @@ def draw_bounding_boxes(
     bboxes[:, [1, 3]] *= h  # scale y coords
 
     # convert labels to tensor
-
-    print(labels)
     if scores is None:
         scores = torch.ones(len(labels))
 

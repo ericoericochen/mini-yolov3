@@ -63,7 +63,7 @@ class OxfordIIITPetDataset(ObjectDetectionDataset):
                         bbox = box_convert(bbox, in_fmt="xyxy", out_fmt="xywh")
 
                         index_data = {
-                            "image": image,
+                            "image": image_path,
                             "bbox": bbox,
                             "label": label,
                         }
@@ -73,10 +73,28 @@ class OxfordIIITPetDataset(ObjectDetectionDataset):
 
         torch.manual_seed(0)
         indices = torch.randperm(len(self.index))
+
         split = int(0.9 * len(indices))
 
         self.trainval_indices = indices[:split]
         self.test_indices = indices[split:]
+
+    def get_original_image(self, idx: int) -> Image.Image:
+        data = self.get_data(idx)
+        image = data["image"]
+
+        return Image.open(image)
+
+    def get_data(self, idx: int):
+        if self.split == "trainval":
+            i = self.trainval_indices[idx]
+        else:
+            i = self.test_indices[idx]
+
+        i = i.item()
+        data = self.index[i]
+
+        return data
 
     def __len__(self):
         if self.split == "trainval":
@@ -85,14 +103,8 @@ class OxfordIIITPetDataset(ObjectDetectionDataset):
             return len(self.test_indices)
 
     def __getitem__(self, idx: int) -> ObjectDetectionData:
-        if self.split == "trainval":
-            i = self.trainval_indices[idx]
-        else:
-            i = self.test_indices[idx]
-
-        i = i.item()
-        data = self.index[i]
-        image = data["image"]
+        data = self.get_data(idx)
+        image = Image.open(data["image"])
 
         if self.transform:
             image = self.transform(image)

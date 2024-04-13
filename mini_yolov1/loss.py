@@ -48,13 +48,14 @@ class YOLOLoss(nn.Module):
         target_bboxes = target_bboxes.repeat(1, 1, 1, self.B).view(-1, 5)  # (NBS^2, 5)
 
         obj_mask = target_bboxes[..., 0] == 1
-
         obj_pred_bboxes = pred_bboxes[obj_mask]
         obj_target_bboxes = target_bboxes[obj_mask]
 
         # calculate iou
-        obj_pred_xywh = obj_pred_bboxes[..., 1:]
+        obj_pred_xywh = obj_pred_bboxes[..., 1:].abs()
         obj_target_xywh = obj_target_bboxes[..., 1:]
+        # obj_pred_xywh = obj_pred_bboxes[..., 1:]
+        # obj_target_xywh = obj_target_bboxes[..., 1:]
 
         iou = box_iou(
             box_convert(obj_pred_xywh, in_fmt="cxcywh", out_fmt="xyxy"),
@@ -87,6 +88,7 @@ class YOLOLoss(nn.Module):
         # confidence loss
         obj_pred_conf = obj_pred_bboxes[..., 0][responsible_mask]
         obj_target_conf = obj_target_bboxes[..., 0][responsible_mask]
+
         obj_conf_loss = self.mse_loss(obj_pred_conf, obj_target_conf)
 
         # noobj loss
@@ -99,7 +101,8 @@ class YOLOLoss(nn.Module):
         )
 
         # class loss
-        pred_classes = pred_classes.contiguous().view(-1, self.C)
+        pred_classes = pred_classes.contiguous().view(-1, self.C).softmax(dim=-1)
+        # pred_classes = pred_classes.contiguous().view(-1, self.C)
         target_classes = target_classes.contiguous().view(-1, self.C)
 
         obj_mask = (target[..., 0] == 1).view(-1)

@@ -160,8 +160,17 @@ class YOLO(nn.Module):
                 [bbox_x.unsqueeze(-1), bbox_y.unsqueeze(-1), bbox_wh], dim=-1
             )
 
-            bbox_xywh = bbox_xywh.contiguous().view(-1, 4)
-            bbox_conf = bbox_conf.contiguous().view(-1)
+            # select responsible bbox from each cell
+            bbox_conf = bbox_conf.view(-1, self.B)
+            max_conf, max_conf_idx = bbox_conf.max(dim=-1, keepdim=True)
+            indices = torch.arange(0, self.B, device=pred.device).repeat(
+                max_conf.shape[0], 1
+            )
+
+            responsible_mask = (indices == max_conf_idx).view(-1)
+
+            bbox_xywh = bbox_xywh.contiguous().view(-1, 4)[responsible_mask]
+            bbox_conf = bbox_conf.contiguous().view(-1)[responsible_mask]
 
             # keep boxes above a confidence threshold
             keep_mask = bbox_conf >= confidence_threshold
@@ -171,7 +180,7 @@ class YOLO(nn.Module):
             pred_classes = (
                 pred_bbox[..., -self.C :].repeat(1, 1, self.B).view(-1, self.C)
             )
-            pred_classes = pred_classes[keep_mask]
+            pred_classes = pred_classes[responsible_mask][keep_mask].softmax(dim=-1)
 
             # non-maximum suppression
             bbox_xyxy = box_convert(bbox_xywh, in_fmt="cxcywh", out_fmt="xyxy")
@@ -205,6 +214,6 @@ class YOLO(nn.Module):
             5 * self.B + self.C,
             self.S,
             self.S,
-        ).abs()
+        ).sigmoid()
 
         return x
